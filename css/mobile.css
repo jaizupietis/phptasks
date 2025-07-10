@@ -1,0 +1,87 @@
+/**
+ * Mobile-specific CSS
+ * Optimized for smartphone portrait layout
+ */
+
+/* Mobile device detection */
+.mobile-device {
+    padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Touch-friendly interactions */
+.mobile-device .btn {
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+}
+
+.mobile-device .form-control {
+    font-size: 16px; /* Prevents zoom on iOS */
+    min-height: 44px;
+    padding: 0.75rem;
+}
+
+/* Mobile task cards */
+.mobile-device .task-card {
+    border-left-width: 0;
+    border-top: 4px solid var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.mobile-device .task-card.priority-low {
+    border-top-color: var(--success-color);
+}
+
+.mobile-device .task-card.priority-medium {
+    border-top-color: var(--warning-color);
+}
+
+.mobile-device .task-card.priority-high {
+    border-top-color: #fd7e14;
+}
+
+.mobile-device .task-card.priority-urgent {
+    border-top-color: var(--danger-color);
+}
+
+/* Mobile navigation */
+.mobile-device .navbar {
+    padding: 0.5rem 1rem;
+}
+
+.mobile-device .navbar-brand {
+    font-size: 1.1rem;
+}
+
+/* Improved touch targets */
+.mobile-device .list-group-item {
+    padding: 1rem;
+}
+
+/* Mobile-specific utilities */
+.mobile-device .container-fluid {
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+/* Hide desktop elements on mobile */
+@media (max-width: 768px) {
+    .d-mobile-none {
+        display: none !important;
+    }
+    
+    .d-mobile-block {
+        display: block !important;
+    }
+}
+
+/* Landscape orientation adjustments */
+@media screen and (orientation: landscape) and (max-height: 600px) {
+    .mobile-device .bottom-nav {
+        display: none;
+    }
+    
+    .mobile-device .mobile-padding {
+        padding-bottom: 1rem;
+    }
+}

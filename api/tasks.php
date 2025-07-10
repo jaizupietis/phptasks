@@ -1,0 +1,577 @@
+<?php
+date_default_timezone_set('Europe/Riga');
+/**
+ * Fixed Tasks API - Handles task creation and management
+ * Location: /var/www/tasks/api/tasks.php
+ */
+
+// Clean start - suppress XDebug if needed
+if (function_exists('xdebug_disable')) {
+    xdebug_disable();
+}
+
+// Error handling
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+ini_set('error_log', '/var/www/tasks/logs/api_errors.log');
+
+// Security check
+if (!defined('SECURE_ACCESS')) {
+    define('SECURE_ACCESS', true);
+}
+
+// Include config
+require_once dirname(__DIR__) . '/config/config.php';
+
+// Set JSON headers
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+
+// Handle preflight
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit(json_encode(['success' => true]));
+}
+
+// JSON response helper
+function jsonResponse($data, $code = 200) {
+    http_response_code($code);
+    echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// Log function
+function logError($message, $context = []) {
+    $log_message = date('Y-m-d H:i:s') . ' - ' . $message;
+    if (!empty($context)) {
+        $log_message .= ' - Context: ' . json_encode($context);
+    }
+    error_log($log_message);
+}
+
+// Check authentication
+if (!isset($_SESSION['user_id'])) {
+    jsonResponse(['success' => false, 'message' => 'Authentication required'], 401);
+}
+
+// Get user info
+$user_id = $_SESSION['user_id'];
+$user_role = $_SESSION['role'] ?? 'mechanic';
+
+// Initialize database
+try {
+    $db = Database::getInstance();
+    $connection = $db->getConnection();
+} catch (Exception $e) {
+    logError('Database connection failed', ['error' => $e->getMessage()]);
+    jsonResponse(['success' => false, 'message' => 'Database connection failed'], 500);
+}
+
+// Route requests
+try {
+    switch ($_SERVER['REQUEST_METHOD']) {
+        case 'GET':
+            handleGet();
+            break;
+        case 'POST':
+            handlePost();
+            break;
+        case 'PUT':
+            handlePut();
+            break;
+        case 'DELETE':
+            handleDelete();
+            break;
+        default:
+            jsonResponse(['success' => false, 'message' => 'Method not allowed'], 405);
+    }
+} catch (Exception $e) {
+    logError('Request handling failed', ['error' => $e->getMessage(), 'method' => $_SERVER['REQUEST_METHOD']]);
+    jsonResponse(['success' => false, 'message' => 'Server error occurred'], 500);
+}
+
+function handleGet() {
+    global $db, $user_id, $user_role;
+    
+    $action = $_GET['action'] ?? 'get_tasks';
+    
+    switch ($action) {
+        case 'test':
+            jsonResponse([
+                'success' => true,
+                'message' => 'API is working',
+                'user_id' => $user_id,
+                'role' => $user_role,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+            break;
+            
+        case 'get_tasks':
+            getTasks();
+            break;
+            
+        case 'get_task':
+            getTask();
+            break;
+            
+        default:
+            jsonResponse(['success' => false, 'message' => 'Invalid action'], 400);
+    }
+}
+
+function handlePost() {
+    global $db, $user_id, $user_role;
+    
+    // Get JSON input
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        logError('Invalid JSON input', ['error' => json_last_error_msg()]);
+        jsonResponse(['success' => false, 'message' => 'Invalid JSON input'], 400);
+    }
+    
+    $action = $input['action'] ?? '';
+    
+    switch ($action) {
+        case 'create_task':
+            createTask($input);
+            break;
+            
+        case 'update_status':
+            updateTaskStatus($input);
+            break;
+            
+        default:
+            jsonResponse(['success' => false, 'message' => 'Invalid action'], 400);
+    }
+}
+
+function handlePut() {
+    global $db, $user_id, $user_role;
+    
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        jsonResponse(['success' => false, 'message' => 'Invalid JSON input'], 400);
+    }
+    
+    $action = $input['action'] ?? 'update_task';
+    
+    switch ($action) {
+        case 'update_task':
+            updateTask($input);
+            break;
+            
+        default:
+            jsonResponse(['success' => false, 'message' => 'Invalid action'], 400);
+    }
+}
+
+function handleDelete() {
+    global $db, $user_id, $user_role;
+    
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        jsonResponse(['success' => false, 'message' => 'Invalid JSON input'], 400);
+    }
+    
+    deleteTask($input);
+}
+
+function getTasks() {
+    global $db, $user_id, $user_role;
+    
+    try {
+        $status_filter = $_GET['status'] ?? 'all';
+        $limit = min(100, (int)($_GET['limit'] ?? 50));
+        $offset = max(0, (int)($_GET['offset'] ?? 0));
+        
+        $where_conditions = [];
+        $params = [];
+        
+        // Role-based filtering
+        if ($user_role === 'mechanic') {
+            $where_conditions[] = "t.assigned_to = ?";
+            $params[] = $user_id;
+        }
+        
+        // Status filtering
+        if ($status_filter !== 'all') {
+            $where_conditions[] = "t.status = ?";
+            $params[] = $status_filter;
+        }
+        
+        $where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
+        
+        $sql = "SELECT t.*, 
+                       ua.first_name as assigned_to_name, 
+                       ua.last_name as assigned_to_lastname,
+                       ub.first_name as assigned_by_name, 
+                       ub.last_name as assigned_by_lastname
+                FROM tasks t 
+                LEFT JOIN users ua ON t.assigned_to = ua.id 
+                LEFT JOIN users ub ON t.assigned_by = ub.id 
+                {$where_clause}
+                ORDER BY 
+                    CASE 
+                        WHEN t.status = 'in_progress' THEN 1 
+                        WHEN t.priority = 'urgent' THEN 2 
+                        WHEN t.priority = 'high' THEN 3 
+                        ELSE 4 
+                    END,
+                    t.due_date ASC,
+                    t.created_at DESC
+                LIMIT {$limit} OFFSET {$offset}";
+        
+        $tasks = $db->fetchAll($sql, $params);
+        
+        jsonResponse([
+            'success' => true,
+            'tasks' => $tasks,
+            'count' => count($tasks)
+        ]);
+        
+    } catch (Exception $e) {
+        logError('Get tasks failed', ['error' => $e->getMessage()]);
+        jsonResponse(['success' => false, 'message' => 'Failed to retrieve tasks'], 500);
+    }
+}
+
+function getTask() {
+    global $db, $user_id, $user_role;
+    
+    $task_id = (int)($_GET['id'] ?? 0);
+    
+    if (!$task_id) {
+        jsonResponse(['success' => false, 'message' => 'Task ID required'], 400);
+    }
+    
+    try {
+        $sql = "SELECT t.*, 
+                       ua.first_name as assigned_to_name, 
+                       ua.last_name as assigned_to_lastname,
+                       ub.first_name as assigned_by_name, 
+                       ub.last_name as assigned_by_lastname
+                FROM tasks t 
+                LEFT JOIN users ua ON t.assigned_to = ua.id 
+                LEFT JOIN users ub ON t.assigned_by = ub.id 
+                WHERE t.id = ?";
+        
+        $params = [$task_id];
+        
+        // Role-based access control
+        if ($user_role === 'mechanic') {
+            $sql .= " AND t.assigned_to = ?";
+            $params[] = $user_id;
+        }
+        
+        $task = $db->fetch($sql, $params);
+        
+        if (!$task) {
+            jsonResponse(['success' => false, 'message' => 'Task not found'], 404);
+        }
+        
+        jsonResponse(['success' => true, 'task' => $task]);
+        
+    } catch (Exception $e) {
+        logError('Get task failed', ['error' => $e->getMessage(), 'task_id' => $task_id]);
+        jsonResponse(['success' => false, 'message' => 'Failed to retrieve task'], 500);
+    }
+}
+
+function createTask($input) {
+    global $db, $user_id, $user_role;
+    
+    // Check permissions
+    if (!in_array($user_role, ['admin', 'manager'])) {
+        jsonResponse(['success' => false, 'message' => 'Permission denied'], 403);
+    }
+    
+    // Validate required fields
+    if (empty($input['title']) || empty($input['assigned_to'])) {
+        jsonResponse(['success' => false, 'message' => 'Title and assigned user are required'], 400);
+    }
+    
+    try {
+        // Validate assigned user exists and is a mechanic
+        $assigned_user = $db->fetch(
+            "SELECT id, first_name, last_name, email FROM users WHERE id = ? AND role = 'mechanic' AND is_active = 1",
+            [(int)$input['assigned_to']]
+        );
+        
+        if (!$assigned_user) {
+            jsonResponse(['success' => false, 'message' => 'Invalid assigned user'], 400);
+        }
+        
+        // Validate priority
+        $valid_priorities = ['low', 'medium', 'high', 'urgent'];
+        $priority = in_array($input['priority'] ?? '', $valid_priorities) ? $input['priority'] : 'medium';
+        
+        // Prepare task data - ONLY include fields that exist in the database
+        $task_data = [
+            'title' => trim($input['title']),
+            'description' => trim($input['description'] ?? ''),
+            'priority' => $priority,
+            'status' => 'pending',
+            'assigned_to' => (int)$input['assigned_to'],
+            'assigned_by' => $user_id,
+            'category' => trim($input['category'] ?? ''),
+            'location' => trim($input['location'] ?? ''),
+            'equipment' => trim($input['equipment'] ?? ''),
+            'estimated_hours' => !empty($input['estimated_hours']) ? (float)$input['estimated_hours'] : null,
+            'due_date' => !empty($input['due_date']) ? date('Y-m-d H:i:s', strtotime($input['due_date'])) : null,
+            'start_date' => !empty($input['start_date']) ? date('Y-m-d H:i:s', strtotime($input['start_date'])) : null,
+            'notes' => trim($input['notes'] ?? ''),
+            'progress_percentage' => 0
+        ];
+        
+        // Remove null values that shouldn't be inserted
+        $task_data = array_filter($task_data, function($value) {
+            return $value !== null && $value !== '';
+        });
+        
+        // Build the insert query
+        $fields = array_keys($task_data);
+        $placeholders = array_fill(0, count($fields), '?');
+        $values = array_values($task_data);
+        
+        $sql = "INSERT INTO tasks (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        
+        logError('Creating task', ['sql' => $sql, 'values' => $values]);
+        
+        // Execute the query
+        $stmt = $db->query($sql, $values);
+        $new_task_id = $db->getConnection()->lastInsertId();
+        
+        if ($new_task_id) {
+            // Create notification
+            try {
+                $notification_sql = "INSERT INTO notifications (user_id, task_id, type, title, message) 
+                                    VALUES (?, ?, 'task_assigned', 'New Task Assigned', ?)";
+                $notification_params = [
+                    $input['assigned_to'],
+                    $new_task_id,
+                    "New task: '{$task_data['title']}'"
+                ];
+                
+                $db->query($notification_sql, $notification_params);
+                
+            } catch (Exception $e) {
+                logError('Notification creation failed', ['error' => $e->getMessage()]);
+                // Don't fail task creation if notification fails
+            }
+            
+            // Log activity
+            logActivity("Task created: {$task_data['title']}", 'INFO', $user_id);
+            
+            jsonResponse([
+                'success' => true,
+                'message' => 'Task created successfully',
+                'task_id' => $new_task_id,
+                'task' => array_merge($task_data, ['id' => $new_task_id])
+            ]);
+            
+        } else {
+            throw new Exception('Failed to get task ID after insert');
+        }
+        
+    } catch (Exception $e) {
+        logError('Task creation failed', [
+            'error' => $e->getMessage(),
+            'input' => $input,
+            'user_id' => $user_id
+        ]);
+        
+        jsonResponse([
+            'success' => false,
+            'message' => 'Failed to create task: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+function updateTaskStatus($input) {
+    global $db, $user_id, $user_role;
+    
+    $task_id = (int)($input['task_id'] ?? 0);
+    $new_status = trim($input['status'] ?? '');
+    
+    if (!$task_id || !$new_status) {
+        jsonResponse(['success' => false, 'message' => 'Task ID and status are required'], 400);
+    }
+    
+    $valid_statuses = ['pending', 'in_progress', 'completed', 'cancelled', 'on_hold'];
+    if (!in_array($new_status, $valid_statuses)) {
+        jsonResponse(['success' => false, 'message' => 'Invalid status'], 400);
+    }
+    
+    try {
+        // Get current task
+        $task = $db->fetch("SELECT * FROM tasks WHERE id = ?", [$task_id]);
+        
+        if (!$task) {
+            jsonResponse(['success' => false, 'message' => 'Task not found'], 404);
+        }
+        
+        // Check permissions
+        if ($user_role === 'mechanic' && $task['assigned_to'] != $user_id) {
+            jsonResponse(['success' => false, 'message' => 'Permission denied'], 403);
+        }
+        
+        // Prepare update fields
+        $update_fields = ['status = ?'];
+        $update_params = [$new_status];
+        
+        // Handle status-specific updates
+        if ($new_status === 'completed') {
+            $update_fields[] = 'completed_date = NOW()';
+            $update_fields[] = 'progress_percentage = 100';
+        } elseif ($new_status === 'in_progress' && $task['status'] === 'pending') {
+            $update_fields[] = 'start_date = NOW()';
+        }
+        
+        $update_sql = "UPDATE tasks SET " . implode(', ', $update_fields) . " WHERE id = ?";
+        $update_params[] = $task_id;
+        
+        $result = $db->query($update_sql, $update_params);
+        
+        if ($result->rowCount() > 0) {
+            // Create notification
+            try {
+                $notify_user_id = ($user_role === 'mechanic') ? $task['assigned_by'] : $task['assigned_to'];
+                if ($notify_user_id && $notify_user_id != $user_id) {
+                    $db->query(
+                        "INSERT INTO notifications (user_id, task_id, type, title, message) 
+                         VALUES (?, ?, 'task_updated', 'Task Status Updated', ?)",
+                        [$notify_user_id, $task_id, "Task '{$task['title']}' status changed to {$new_status}"]
+                    );
+                }
+            } catch (Exception $e) {
+                logError('Status update notification failed', ['error' => $e->getMessage()]);
+            }
+            
+            // Log activity
+            logActivity("Task status updated: {$task['title']} -> {$new_status}", 'INFO', $user_id);
+            
+            jsonResponse([
+                'success' => true,
+                'message' => 'Task status updated successfully',
+                'task_id' => $task_id,
+                'new_status' => $new_status
+            ]);
+        } else {
+            jsonResponse(['success' => false, 'message' => 'No changes made'], 400);
+        }
+        
+    } catch (Exception $e) {
+        logError('Status update failed', ['error' => $e->getMessage(), 'task_id' => $task_id]);
+        jsonResponse(['success' => false, 'message' => 'Failed to update status'], 500);
+    }
+}
+
+function updateTask($input) {
+    global $db, $user_id, $user_role;
+    
+    $task_id = (int)($input['task_id'] ?? 0);
+    
+    if (!$task_id) {
+        jsonResponse(['success' => false, 'message' => 'Task ID required'], 400);
+    }
+    
+    // Check permissions
+    if (!in_array($user_role, ['admin', 'manager'])) {
+        jsonResponse(['success' => false, 'message' => 'Permission denied'], 403);
+    }
+    
+    try {
+        // Get current task
+        $task = $db->fetch("SELECT * FROM tasks WHERE id = ?", [$task_id]);
+        
+        if (!$task) {
+            jsonResponse(['success' => false, 'message' => 'Task not found'], 404);
+        }
+        
+        // Build update fields
+        $update_fields = [];
+        $update_params = [];
+        
+        $updatable_fields = ['title', 'description', 'priority', 'status', 'assigned_to', 'category', 'location', 'equipment', 'estimated_hours', 'due_date', 'notes'];
+        
+        foreach ($updatable_fields as $field) {
+            if (isset($input[$field])) {
+                $update_fields[] = "{$field} = ?";
+                $update_params[] = $input[$field];
+            }
+        }
+        
+        if (empty($update_fields)) {
+            jsonResponse(['success' => false, 'message' => 'No fields to update'], 400);
+        }
+        
+        $update_sql = "UPDATE tasks SET " . implode(', ', $update_fields) . " WHERE id = ?";
+        $update_params[] = $task_id;
+        
+        $result = $db->query($update_sql, $update_params);
+        
+        if ($result->rowCount() > 0) {
+            logActivity("Task updated: {$task['title']}", 'INFO', $user_id);
+            
+            jsonResponse([
+                'success' => true,
+                'message' => 'Task updated successfully',
+                'task_id' => $task_id
+            ]);
+        } else {
+            jsonResponse(['success' => false, 'message' => 'No changes made'], 400);
+        }
+        
+    } catch (Exception $e) {
+        logError('Task update failed', ['error' => $e->getMessage(), 'task_id' => $task_id]);
+        jsonResponse(['success' => false, 'message' => 'Failed to update task'], 500);
+    }
+}
+
+function deleteTask($input) {
+    global $db, $user_id, $user_role;
+    
+    $task_id = (int)($input['task_id'] ?? 0);
+    
+    if (!$task_id) {
+        jsonResponse(['success' => false, 'message' => 'Task ID required'], 400);
+    }
+    
+    // Check permissions
+    if (!in_array($user_role, ['admin', 'manager'])) {
+        jsonResponse(['success' => false, 'message' => 'Permission denied'], 403);
+    }
+    
+    try {
+        // Get task info before deletion
+        $task = $db->fetch("SELECT title FROM tasks WHERE id = ?", [$task_id]);
+        
+        if (!$task) {
+            jsonResponse(['success' => false, 'message' => 'Task not found'], 404);
+        }
+        
+        // Delete task (notifications will be deleted automatically due to foreign key constraint)
+        $result = $db->query("DELETE FROM tasks WHERE id = ?", [$task_id]);
+        
+        if ($result->rowCount() > 0) {
+            logActivity("Task deleted: {$task['title']}", 'INFO', $user_id);
+            
+            jsonResponse([
+                'success' => true,
+                'message' => 'Task deleted successfully',
+                'task_id' => $task_id
+            ]);
+        } else {
+            jsonResponse(['success' => false, 'message' => 'Task not found'], 404);
+        }
+        
+    } catch (Exception $e) {
+        logError('Task deletion failed', ['error' => $e->getMessage(), 'task_id' => $task_id]);
+        jsonResponse(['success' => false, 'message' => 'Failed to delete task'], 500);
+    }
+}
+?>

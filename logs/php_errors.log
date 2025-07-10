@@ -1,0 +1,174 @@
+[09-Jul-2025 06:51:57 UTC] PHP Warning:  Constant SECURE_ACCESS already defined in /var/www/tasks/api/tasks.php on line 13
+[09-Jul-2025 06:51:57 UTC] PHP Stack trace:
+[09-Jul-2025 06:51:57 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 06:51:57 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 06:51:57 UTC] PHP   3. define($constant_name = 'SECURE_ACCESS', $value = TRUE) /var/www/tasks/api/tasks.php:13
+[09-Jul-2025 06:51:57 UTC] PHP Warning:  require_once(../config/config.php): Failed to open stream: No such file or directory in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 06:51:57 UTC] PHP Stack trace:
+[09-Jul-2025 06:51:57 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 06:51:57 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 06:51:57 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '../config/config.php' (include_path='.:/usr/share/php') in /var/www/tasks/api/tasks.php:14
+Stack trace:
+#0 /var/www/tasks/test_api.php(67): include()
+#1 {main}
+  thrown in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:19 UTC] PHP Warning:  Constant SECURE_ACCESS already defined in /var/www/tasks/api/tasks.php on line 13
+[09-Jul-2025 07:10:19 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:19 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:19 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:19 UTC] PHP   3. define($constant_name = 'SECURE_ACCESS', $value = TRUE) /var/www/tasks/api/tasks.php:13
+[09-Jul-2025 07:10:19 UTC] PHP Warning:  require_once(../config/config.php): Failed to open stream: No such file or directory in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:19 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:19 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:19 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:19 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '../config/config.php' (include_path='.:/usr/share/php') in /var/www/tasks/api/tasks.php:14
+Stack trace:
+#0 /var/www/tasks/test_api.php(67): include()
+#1 {main}
+  thrown in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:20 UTC] PHP Warning:  Constant SECURE_ACCESS already defined in /var/www/tasks/api/tasks.php on line 13
+[09-Jul-2025 07:10:20 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:20 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:20 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:20 UTC] PHP   3. define($constant_name = 'SECURE_ACCESS', $value = TRUE) /var/www/tasks/api/tasks.php:13
+[09-Jul-2025 07:10:20 UTC] PHP Warning:  require_once(../config/config.php): Failed to open stream: No such file or directory in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:20 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:20 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:20 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:20 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '../config/config.php' (include_path='.:/usr/share/php') in /var/www/tasks/api/tasks.php:14
+Stack trace:
+#0 /var/www/tasks/test_api.php(67): include()
+#1 {main}
+  thrown in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:21 UTC] PHP Warning:  Constant SECURE_ACCESS already defined in /var/www/tasks/api/tasks.php on line 13
+[09-Jul-2025 07:10:21 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:21 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:21 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:21 UTC] PHP   3. define($constant_name = 'SECURE_ACCESS', $value = TRUE) /var/www/tasks/api/tasks.php:13
+[09-Jul-2025 07:10:21 UTC] PHP Warning:  require_once(../config/config.php): Failed to open stream: No such file or directory in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:21 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:21 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:21 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:21 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '../config/config.php' (include_path='.:/usr/share/php') in /var/www/tasks/api/tasks.php:14
+Stack trace:
+#0 /var/www/tasks/test_api.php(67): include()
+#1 {main}
+  thrown in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:21 UTC] PHP Warning:  Constant SECURE_ACCESS already defined in /var/www/tasks/api/tasks.php on line 13
+[09-Jul-2025 07:10:21 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:21 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:21 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:21 UTC] PHP   3. define($constant_name = 'SECURE_ACCESS', $value = TRUE) /var/www/tasks/api/tasks.php:13
+[09-Jul-2025 07:10:21 UTC] PHP Warning:  require_once(../config/config.php): Failed to open stream: No such file or directory in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:21 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:21 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:21 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:21 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '../config/config.php' (include_path='.:/usr/share/php') in /var/www/tasks/api/tasks.php:14
+Stack trace:
+#0 /var/www/tasks/test_api.php(67): include()
+#1 {main}
+  thrown in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:43 UTC] PHP Warning:  Constant SECURE_ACCESS already defined in /var/www/tasks/api/tasks.php on line 13
+[09-Jul-2025 07:10:43 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:43 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:43 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:43 UTC] PHP   3. define($constant_name = 'SECURE_ACCESS', $value = TRUE) /var/www/tasks/api/tasks.php:13
+[09-Jul-2025 07:10:43 UTC] PHP Warning:  require_once(../config/config.php): Failed to open stream: No such file or directory in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:43 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:43 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:43 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:43 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '../config/config.php' (include_path='.:/usr/share/php') in /var/www/tasks/api/tasks.php:14
+Stack trace:
+#0 /var/www/tasks/test_api.php(67): include()
+#1 {main}
+  thrown in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:43 UTC] PHP Warning:  Constant SECURE_ACCESS already defined in /var/www/tasks/api/tasks.php on line 13
+[09-Jul-2025 07:10:43 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:43 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:43 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:43 UTC] PHP   3. define($constant_name = 'SECURE_ACCESS', $value = TRUE) /var/www/tasks/api/tasks.php:13
+[09-Jul-2025 07:10:43 UTC] PHP Warning:  require_once(../config/config.php): Failed to open stream: No such file or directory in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:43 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:43 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:43 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:43 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '../config/config.php' (include_path='.:/usr/share/php') in /var/www/tasks/api/tasks.php:14
+Stack trace:
+#0 /var/www/tasks/test_api.php(67): include()
+#1 {main}
+  thrown in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:44 UTC] PHP Warning:  Constant SECURE_ACCESS already defined in /var/www/tasks/api/tasks.php on line 13
+[09-Jul-2025 07:10:44 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:44 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:44 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:44 UTC] PHP   3. define($constant_name = 'SECURE_ACCESS', $value = TRUE) /var/www/tasks/api/tasks.php:13
+[09-Jul-2025 07:10:44 UTC] PHP Warning:  require_once(../config/config.php): Failed to open stream: No such file or directory in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:44 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:44 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:44 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:44 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '../config/config.php' (include_path='.:/usr/share/php') in /var/www/tasks/api/tasks.php:14
+Stack trace:
+#0 /var/www/tasks/test_api.php(67): include()
+#1 {main}
+  thrown in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:44 UTC] PHP Warning:  Constant SECURE_ACCESS already defined in /var/www/tasks/api/tasks.php on line 13
+[09-Jul-2025 07:10:44 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:44 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:44 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:44 UTC] PHP   3. define($constant_name = 'SECURE_ACCESS', $value = TRUE) /var/www/tasks/api/tasks.php:13
+[09-Jul-2025 07:10:44 UTC] PHP Warning:  require_once(../config/config.php): Failed to open stream: No such file or directory in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:44 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:44 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:44 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:44 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '../config/config.php' (include_path='.:/usr/share/php') in /var/www/tasks/api/tasks.php:14
+Stack trace:
+#0 /var/www/tasks/test_api.php(67): include()
+#1 {main}
+  thrown in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:45 UTC] PHP Warning:  Constant SECURE_ACCESS already defined in /var/www/tasks/api/tasks.php on line 13
+[09-Jul-2025 07:10:45 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:45 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:45 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:45 UTC] PHP   3. define($constant_name = 'SECURE_ACCESS', $value = TRUE) /var/www/tasks/api/tasks.php:13
+[09-Jul-2025 07:10:45 UTC] PHP Warning:  require_once(../config/config.php): Failed to open stream: No such file or directory in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:45 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:45 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:45 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:45 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '../config/config.php' (include_path='.:/usr/share/php') in /var/www/tasks/api/tasks.php:14
+Stack trace:
+#0 /var/www/tasks/test_api.php(67): include()
+#1 {main}
+  thrown in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:46 UTC] PHP Warning:  Constant SECURE_ACCESS already defined in /var/www/tasks/api/tasks.php on line 13
+[09-Jul-2025 07:10:46 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:46 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:46 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:46 UTC] PHP   3. define($constant_name = 'SECURE_ACCESS', $value = TRUE) /var/www/tasks/api/tasks.php:13
+[09-Jul-2025 07:10:46 UTC] PHP Warning:  require_once(../config/config.php): Failed to open stream: No such file or directory in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 07:10:46 UTC] PHP Stack trace:
+[09-Jul-2025 07:10:46 UTC] PHP   1. {main}() /var/www/tasks/test_api.php:0
+[09-Jul-2025 07:10:46 UTC] PHP   2. include() /var/www/tasks/test_api.php:67
+[09-Jul-2025 07:10:46 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '../config/config.php' (include_path='.:/usr/share/php') in /var/www/tasks/api/tasks.php:14
+Stack trace:
+#0 /var/www/tasks/test_api.php(67): include()
+#1 {main}
+  thrown in /var/www/tasks/api/tasks.php on line 14
+[09-Jul-2025 10:13:27 UTC] 2025-07-09 10:13:27 - Creating task - Context: {"sql":"INSERT INTO tasks (title, description, priority, status, assigned_to, assigned_by, category, location, equipment, estimated_hours, due_date, progress_percentage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)","values":["Test Task via API","Testing task creation","high","pending",3,1,"Testing","Workshop","Test Equipment",2.5,"2025-07-11 14:00:00",0]}
+[09-Jul-2025 10:51:37 UTC] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /var/www/tasks/test_task_creation.php on line 83
+[09-Jul-2025 14:23:41 Europe/Riga] Database connection failed: SQLSTATE[HY000]: General error: 1298 Unknown or incorrect time zone: 'Europe/Riga'
+[09-Jul-2025 14:23:58 Europe/Riga] Database connection failed: SQLSTATE[HY000]: General error: 1298 Unknown or incorrect time zone: 'Europe/Riga'
+[09-Jul-2025 14:24:24 Europe/Riga] Database connection failed: SQLSTATE[HY000]: General error: 1298 Unknown or incorrect time zone: 'Europe/Riga'
+[09-Jul-2025 14:28:32 Europe/Riga] Database query error: SQLSTATE[HY000]: General error: 1298 Unknown or incorrect time zone: 'Europe/Riga'
+[09-Jul-2025 14:30:06 Europe/Riga] Database connection failed: SQLSTATE[HY000]: General error: 1298 Unknown or incorrect time zone: 'Europe/Riga'
+[09-Jul-2025 14:30:08 Europe/Riga] Database connection failed: SQLSTATE[HY000]: General error: 1298 Unknown or incorrect time zone: 'Europe/Riga'
+[09-Jul-2025 14:30:08 Europe/Riga] Database connection failed: SQLSTATE[HY000]: General error: 1298 Unknown or incorrect time zone: 'Europe/Riga'
+[09-Jul-2025 15:08:10 Europe/Riga] 2025-07-09 15:08:10 - Creating task - Context: {"sql":"INSERT INTO tasks (title, description, priority, status, assigned_to, assigned_by, category, location, equipment, due_date, start_date, progress_percentage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)","values":["fgfgfgf","fgfgfg","medium","pending",3,2,"Preventive Maintenance","fgfg","fgfg","2025-07-10 15:08:00","2025-07-09 15:08:00",0]}
+[09-Jul-2025 15:23:21 Europe/Riga] PHP Fatal error:  Uncaught Error: Call to undefined function timeAgo() in /var/www/tasks/admin/dashboard.php:392
+Stack trace:
+#0 {main}
+  thrown in /var/www/tasks/admin/dashboard.php on line 392
+[09-Jul-2025 15:25:04 Europe/Riga] 2025-07-09 15:25:04 - Creating task - Context: {"sql":"INSERT INTO tasks (title, description, priority, status, assigned_to, assigned_by, due_date, start_date, progress_percentage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)","values":["Testa darbs Mikam","tt","medium","pending",3,1,"2025-07-10 15:24:00","2025-07-09 15:24:00",0]}
+[09-Jul-2025 15:26:55 Europe/Riga] PHP Fatal error:  Uncaught Error: Call to undefined function timeAgo() in /var/www/tasks/admin/dashboard.php:392
+Stack trace:
+#0 {main}
+  thrown in /var/www/tasks/admin/dashboard.php on line 392
+[09-Jul-2025 15:48:15 Europe/Riga] 2025-07-09 15:48:15 - Creating task - Context: {"sql":"INSERT INTO tasks (title, description, priority, status, assigned_to, assigned_by, category, location, equipment, due_date, start_date, progress_percentage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)","values":["Testa darbs v\u0113lreiz Mikam","ss","medium","pending",3,1,"Repair","M2","Skr\u016bves","2025-07-10 15:47:00","2025-07-09 15:47:00",0]}
