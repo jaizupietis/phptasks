@@ -1,7 +1,8 @@
 <?php
 /**
- * Main Entry Point - Login Page
+ * Main Entry Point - Login Page - FIXED VERSION
  * Task Management System
+ * Replace: /var/www/tasks/index.php
  */
 
 define('SECURE_ACCESS', true);
@@ -18,6 +19,9 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['role'])) {
             break;
         case 'mechanic':
             header('Location: mechanic/dashboard.php');
+            break;
+        case 'operator':  // FIXED: Added operator role
+            header('Location: operator/dashboard.php');
             break;
         default:
             session_destroy();
@@ -62,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['login'])) {
                 
                 logActivity("User {$username} logged in successfully", 'INFO', $user['id']);
                 
-                // Redirect based on role
+                // FIXED: Redirect based on role including operator
                 switch ($user['role']) {
                     case 'admin':
                         header('Location: admin/dashboard.php');
@@ -73,8 +77,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['login'])) {
                     case 'mechanic':
                         header('Location: mechanic/dashboard.php');
                         break;
+                    case 'operator':
+                        header('Location: operator/dashboard.php');
+                        break;
                     default:
-                        $error_message = 'Invalid user role.';
+                        $error_message = 'Invalid user role: ' . $user['role'];
+                        logActivity("Invalid role for user: {$username} - {$user['role']}", 'ERROR');
                         session_destroy();
                         break;
                 }
@@ -221,9 +229,17 @@ $is_mobile = isMobile();
                 <i class="fas fa-user-shield text-danger"></i>
                 <small>Administrator</small>
             </div>
+            <div class="demo-card" onclick="fillCredentials('manager1', 'manager123')">
+                <i class="fas fa-users-cog text-primary"></i>
+                <small>Manager</small>
+            </div>
             <div class="demo-card" onclick="fillCredentials('mechanic1', 'mechanic123')">
                 <i class="fas fa-tools text-success"></i>
                 <small>Mechanic</small>
+            </div>
+            <div class="demo-card" onclick="fillCredentials('operator1', 'operator123')">
+                <i class="fas fa-exclamation-triangle text-warning"></i>
+                <small>Operator</small>
             </div>
         </div>
     </div>
@@ -233,6 +249,17 @@ $is_mobile = isMobile();
         document.getElementById('username').value = username;
         document.getElementById('password').value = password;
     }
+    
+    // Auto-dismiss alerts
+    setTimeout(function() {
+        const alerts = document.querySelectorAll('.alert');
+        alerts.forEach(function(alert) {
+            if (alert.classList.contains('alert-dismissible')) {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            }
+        });
+    }, 5000);
     </script>
 </body>
 </html>
