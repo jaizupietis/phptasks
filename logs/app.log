@@ -812,3 +812,82 @@
 [2025-07-10 07:07:12] [INFO] [192.168.2.15] [User: 3] User mechanic1 logged in successfully
 [2025-07-10 07:07:12] [INFO] [192.168.2.15] Application initialized
 [2025-07-10 07:23:53] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:32:12] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:43:56] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:43:57] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:43:59] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:43:59] [INFO] [192.168.2.15] [User: 3] User logged out
+[2025-07-10 07:43:59] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:44:09] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:44:09] [INFO] [192.168.2.15] [User: 2] User manager1 logged in successfully
+[2025-07-10 07:44:09] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:44:41] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:44:42] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:44:42] [INFO] [192.168.2.15] [User: 2] Task deleted: Hydraulic System Inspection
+[2025-07-10 07:44:42] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:44:58] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:44:58] [INFO] [192.168.2.15] [User: 2] Task created: Testa darbs
+[2025-07-10 07:45:00] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:45:04] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:45:12] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:45:17] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:45:18] [INFO] [192.168.2.15] [User: 2] Task updated: Testa darbs
+[2025-07-10 07:45:19] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:45:34] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:45:39] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:47:14] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:47:41] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:47:49] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:53:12] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:55:49] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:55:49] [INFO] [192.168.2.15] [User: 2] User logged out
+[2025-07-10 07:55:49] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:55:51] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:55:51] [INFO] [192.168.2.15] [User: 1] User admin logged in successfully
+[2025-07-10 07:55:51] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:55:59] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:55:59] [INFO] [192.168.2.15] [User: 1] User logged out
+[2025-07-10 07:55:59] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:56:01] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 07:56:02] [INFO] [192.168.2.15] [User: 3] User mechanic1 logged in successfully
+[2025-07-10 07:56:02] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:05:40] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:06:02] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:13:38] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:13:38] [INFO] [192.168.2.15] [User: 3] User logged out
+[2025-07-10 08:13:38] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:13:40] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:13:40] [INFO] [192.168.2.15] [User: 1] User admin logged in successfully
+[2025-07-10 08:13:40] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:13:49] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:13:49] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:13:53] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:13:56] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:13:56] [INFO] [192.168.2.15] [User: 1] Task deleted: Testa darbs
+[2025-07-10 08:13:57] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:15:25] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:15:28] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:15:37] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:15:37] [INFO] [192.168.2.15] [User: 1] User logged out
+[2025-07-10 08:15:37] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:15:40] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:15:40] [INFO] [192.168.2.15] [User: 3] User mechanic1 logged in successfully
+[2025-07-10 08:15:40] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:15:50] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:15:50] [INFO] [192.168.2.15] [User: 3] Task status updated: Testa darbs vēlreiz Mikam -> completed
+[2025-07-10 08:15:51] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:15:54] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:15:58] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:16:00] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:16:09] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:16:12] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:20:55] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:22:43] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:22:46] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:22:46] [INFO] [192.168.2.15] [User: 3] User logged out
+[2025-07-10 08:22:46] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:22:56] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:22:56] [INFO] [192.168.2.15] [User: 2] User manager1 logged in successfully
+[2025-07-10 08:22:56] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:23:15] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:23:28] [INFO] [192.168.2.15] Application initialized

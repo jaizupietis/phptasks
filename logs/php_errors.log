@@ -172,3 +172,4 @@ Stack trace:
 #0 {main}
   thrown in /var/www/tasks/admin/dashboard.php on line 392
 [09-Jul-2025 15:48:15 Europe/Riga] 2025-07-09 15:48:15 - Creating task - Context: {"sql":"INSERT INTO tasks (title, description, priority, status, assigned_to, assigned_by, category, location, equipment, due_date, start_date, progress_percentage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)","values":["Testa darbs v\u0113lreiz Mikam","ss","medium","pending",3,1,"Repair","M2","Skr\u016bves","2025-07-10 15:47:00","2025-07-09 15:47:00",0]}
+[10-Jul-2025 07:44:58 Europe/Riga] 2025-07-10 07:44:58 - Creating task - Context: {"sql":"INSERT INTO tasks (title, priority, status, assigned_to, assigned_by, due_date, start_date, progress_percentage) VALUES (?, ?, ?, ?, ?, ?, ?, ?)","values":["Testa darbs","medium","pending",3,2,"2025-07-11 07:44:00","2025-07-10 07:44:00",0]}
