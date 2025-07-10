@@ -1,7 +1,8 @@
 <?php
 /**
- * Operator Problems Management Page
- * View and manage reported problems
+ * Enhanced Operator Problems Management Page
+ * Complete problem viewing, editing, and deletion with full CRUD operations
+ * Replace: /var/www/tasks/operator/problems.php
  */
 
 define('SECURE_ACCESS', true);
@@ -17,10 +18,44 @@ $db = Database::getInstance();
 $user_id = $_SESSION['user_id'];
 $is_mobile = isMobile();
 
+// Handle problem deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_problem') {
+    $problem_id = (int)$_POST['problem_id'];
+    
+    try {
+        // Verify the problem belongs to the current user and can be deleted
+        $problem = $db->fetch(
+            "SELECT * FROM problems WHERE id = ? AND reported_by = ? AND status = 'reported'",
+            [$problem_id, $user_id]
+        );
+        
+        if ($problem) {
+            // Delete the problem (comments and notifications will be deleted automatically due to foreign keys)
+            $result = $db->query("DELETE FROM problems WHERE id = ?", [$problem_id]);
+            
+            if ($result->rowCount() > 0) {
+                logActivity("Problem deleted: {$problem['title']}", 'INFO', $user_id);
+                $_SESSION['success_message'] = 'Problem deleted successfully!';
+            } else {
+                $_SESSION['error_message'] = 'Failed to delete problem.';
+            }
+        } else {
+            $_SESSION['error_message'] = 'Problem not found or cannot be deleted. Only reported problems can be deleted.';
+        }
+    } catch (Exception $e) {
+        error_log("Problem deletion error: " . $e->getMessage());
+        $_SESSION['error_message'] = 'Error deleting problem: ' . $e->getMessage();
+    }
+    
+    header('Location: problems.php');
+    exit;
+}
+
 // Get filter parameters
 $status_filter = isset($_GET['status']) ? sanitizeInput($_GET['status']) : 'all';
 $priority_filter = isset($_GET['priority']) ? sanitizeInput($_GET['priority']) : 'all';
 $category_filter = isset($_GET['category']) ? sanitizeInput($_GET['category']) : 'all';
+$search = isset($_GET['search']) ? sanitizeInput($_GET['search']) : '';
 
 // Build WHERE clause for filters
 $where_conditions = ["reported_by = ?"];
@@ -41,11 +76,17 @@ if ($category_filter !== 'all') {
     $params[] = $category_filter;
 }
 
+if (!empty($search)) {
+    $where_conditions[] = "(title LIKE ? OR description LIKE ? OR location LIKE ? OR equipment LIKE ?)";
+    $search_param = "%{$search}%";
+    $params = array_merge($params, [$search_param, $search_param, $search_param, $search_param]);
+}
+
 $where_clause = implode(' AND ', $where_conditions);
 
 // Get problems with pagination
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-$per_page = $is_mobile ? 5 : 10;
+$per_page = $is_mobile ? 8 : 15;
 $offset = ($page - 1) * $per_page;
 
 $problems = $db->fetchAll(
@@ -84,7 +125,8 @@ $problem_stats = [
     'reported' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'reported'", $params),
     'assigned' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'assigned'", $params),
     'in_progress' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'in_progress'", $params),
-    'resolved' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'resolved'", $params)
+    'resolved' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'resolved'", $params),
+    'urgent' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.priority = 'urgent'", $params)
 ];
 
 $page_title = 'My Problems';
@@ -124,6 +166,7 @@ $page_title = 'My Problems';
             border-left: 4px solid var(--operator-primary);
             transition: all 0.3s ease;
             margin-bottom: 1rem;
+            position: relative;
         }
         
         .problem-card:hover {
@@ -145,23 +188,29 @@ $page_title = 'My Problems';
         
         .stats-mini {
             text-align: center;
-            padding: 1rem;
+            padding: 1.5rem 1rem;
             border-radius: 10px;
             background: white;
             box-shadow: 0 2px 8px rgba(0,0,0,0.05);
             margin-bottom: 1rem;
+            height: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
         
         .stats-mini h4 {
-            margin: 0;
+            margin: 0.5rem 0;
             font-weight: 700;
+            font-size: 1.8rem;
         }
         
-        .stats-mini.total { border-top: 3px solid var(--operator-primary); }
-        .stats-mini.reported { border-top: 3px solid var(--operator-secondary); }
-        .stats-mini.assigned { border-top: 3px solid var(--info-color); }
-        .stats-mini.progress { border-top: 3px solid var(--warning-color); }
-        .stats-mini.resolved { border-top: 3px solid var(--success-color); }
+        .stats-mini.total { border-top: 4px solid var(--operator-primary); }
+        .stats-mini.reported { border-top: 4px solid var(--operator-secondary); }
+        .stats-mini.assigned { border-top: 4px solid var(--info-color); }
+        .stats-mini.progress { border-top: 4px solid var(--warning-color); }
+        .stats-mini.resolved { border-top: 4px solid var(--success-color); }
+        .stats-mini.urgent { border-top: 4px solid var(--danger-color); }
         
         .priority-badge, .status-badge, .severity-badge {
             padding: 0.25rem 0.75rem;
@@ -230,10 +279,101 @@ $page_title = 'My Problems';
             color: #6c757d;
         }
         
+        .problem-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+        
+        .problem-actions .btn {
+            flex: 1;
+            min-width: 80px;
+        }
+        
+        .workflow-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.5rem 0;
+            font-size: 0.875rem;
+        }
+        
+        .workflow-step {
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .workflow-step.active {
+            background: var(--operator-primary);
+            color: white;
+        }
+        
+        .workflow-step.completed {
+            background: var(--success-color);
+            color: white;
+        }
+        
+        .workflow-step.pending {
+            background: #e9ecef;
+            color: #6c757d;
+        }
+        
+        .delete-confirm {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 1rem;
+            border-radius: 5px;
+            margin: 1rem 0;
+        }
+        
+        .quick-report-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--operator-primary), #138496);
+            color: white;
+            border: none;
+            box-shadow: 0 4px 20px rgba(23, 162, 184, 0.4);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .quick-report-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 25px rgba(23, 162, 184, 0.6);
+            color: white;
+        }
+        
+        .modal-header {
+            background: var(--operator-primary);
+            color: white;
+        }
+        
         @media (max-width: 768px) {
             .problem-meta {
                 flex-direction: column;
                 gap: 0.5rem;
+            }
+            
+            .problem-actions {
+                flex-direction: column;
+            }
+            
+            .quick-report-btn {
+                bottom: 90px;
             }
         }
     </style>
@@ -251,51 +391,73 @@ $page_title = 'My Problems';
                     <i class="fas fa-exclamation-triangle"></i> My Problems
                 </span>
             </div>
-            <button class="btn btn-success btn-sm" onclick="showReportProblemModal()">
-                <i class="fas fa-plus"></i> Report Problem
-            </button>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-light btn-sm" onclick="refreshProblems()">
+                    <i class="fas fa-sync"></i> Refresh
+                </button>
+                <button class="btn btn-success btn-sm" onclick="showReportProblemModal()">
+                    <i class="fas fa-plus"></i> Report Problem
+                </button>
+            </div>
         </div>
     </nav>
     
     <!-- Main Content -->
     <div class="container-fluid p-4 <?php echo $is_mobile ? 'mobile-padding' : ''; ?>">
         
+        <!-- Alert Messages -->
+        <?php if (isset($_SESSION['success_message'])): ?>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($_SESSION['success_message']); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <?php unset($_SESSION['success_message']); ?>
+        <?php endif; ?>
+        
+        <?php if (isset($_SESSION['error_message'])): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($_SESSION['error_message']); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <?php unset($_SESSION['error_message']); ?>
+        <?php endif; ?>
+        
         <!-- Statistics Row -->
         <div class="row g-3 mb-4">
             <div class="col-lg-2 col-md-4 col-6">
                 <div class="stats-mini total">
                     <h4 class="text-primary"><?php echo $problem_stats['total']; ?></h4>
-                    <small class="text-muted">Total Problems</small>
+                    <small>Total Problems</small>
                 </div>
             </div>
             <div class="col-lg-2 col-md-4 col-6">
                 <div class="stats-mini reported">
                     <h4 class="text-secondary"><?php echo $problem_stats['reported']; ?></h4>
-                    <small class="text-muted">Reported</small>
+                    <small>Reported</small>
                 </div>
             </div>
             <div class="col-lg-2 col-md-4 col-6">
                 <div class="stats-mini assigned">
                     <h4 class="text-info"><?php echo $problem_stats['assigned']; ?></h4>
-                    <small class="text-muted">Assigned</small>
+                    <small>Assigned</small>
                 </div>
             </div>
             <div class="col-lg-2 col-md-4 col-6">
                 <div class="stats-mini progress">
                     <h4 class="text-warning"><?php echo $problem_stats['in_progress']; ?></h4>
-                    <small class="text-muted">In Progress</small>
+                    <small>In Progress</small>
                 </div>
             </div>
             <div class="col-lg-2 col-md-4 col-6">
                 <div class="stats-mini resolved">
                     <h4 class="text-success"><?php echo $problem_stats['resolved']; ?></h4>
-                    <small class="text-muted">Resolved</small>
+                    <small>Resolved</small>
                 </div>
             </div>
             <div class="col-lg-2 col-md-4 col-6">
-                <div class="stats-mini">
-                    <h4 class="text-primary"><?php echo count($problems); ?></h4>
-                    <small class="text-muted">Showing</small>
+                <div class="stats-mini urgent">
+                    <h4 class="text-danger"><?php echo $problem_stats['urgent']; ?></h4>
+                    <small>Urgent</small>
                 </div>
             </div>
         </div>
@@ -304,6 +466,15 @@ $page_title = 'My Problems';
         <div class="filter-section p-4">
             <form method="GET" class="row g-3">
                 <div class="col-lg-3 col-md-6">
+                    <label for="search" class="form-label">Search Problems</label>
+                    <div class="search-box">
+                        <input type="text" class="form-control" id="search" name="search" 
+                               value="<?php echo htmlspecialchars($search); ?>" 
+                               placeholder="Search by title, description, location...">
+                        <i class="fas fa-search search-icon"></i>
+                    </div>
+                </div>
+                <div class="col-lg-2 col-md-6">
                     <label for="status" class="form-label">Status</label>
                     <select class="form-select" id="status" name="status">
                         <option value="all" <?php echo $status_filter === 'all' ? 'selected' : ''; ?>>All Status</option>
@@ -314,7 +485,7 @@ $page_title = 'My Problems';
                         <option value="closed" <?php echo $status_filter === 'closed' ? 'selected' : ''; ?>>Closed</option>
                     </select>
                 </div>
-                <div class="col-lg-3 col-md-6">
+                <div class="col-lg-2 col-md-6">
                     <label for="priority" class="form-label">Priority</label>
                     <select class="form-select" id="priority" name="priority">
                         <option value="all" <?php echo $priority_filter === 'all' ? 'selected' : ''; ?>>All Priorities</option>
@@ -338,7 +509,7 @@ $page_title = 'My Problems';
                         <option value="Other" <?php echo $category_filter === 'Other' ? 'selected' : ''; ?>>Other</option>
                     </select>
                 </div>
-                <div class="col-lg-3 col-md-6">
+                <div class="col-lg-2 col-md-6">
                     <label class="form-label">&nbsp;</label>
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-operator">
@@ -361,7 +532,13 @@ $page_title = 'My Problems';
                         <div class="text-center py-5">
                             <i class="fas fa-exclamation-triangle fa-4x text-muted mb-3"></i>
                             <h5>No Problems Found</h5>
-                            <p class="text-muted">No problems match your current filters.<br>Try adjusting the filters above or report a new problem.</p>
+                            <p class="text-muted">
+                                <?php if (!empty($search) || $status_filter !== 'all' || $priority_filter !== 'all' || $category_filter !== 'all'): ?>
+                                No problems match your current filters.<br>Try adjusting the filters above.
+                                <?php else: ?>
+                                You haven't reported any problems yet.<br>Use the button below to report your first problem.
+                                <?php endif; ?>
+                            </p>
                             <button class="btn btn-operator" onclick="showReportProblemModal()">
                                 <i class="fas fa-plus"></i> Report New Problem
                             </button>
@@ -374,12 +551,15 @@ $page_title = 'My Problems';
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6 class="text-muted mb-0">
                         Showing <?php echo count($problems); ?> of <?php echo $total_problems; ?> problems
+                        <?php if (!empty($search)): ?>
+                        for "<?php echo htmlspecialchars($search); ?>"
+                        <?php endif; ?>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <small class="text-muted">Page <?php echo $page; ?> of <?php echo $total_pages; ?></small>
                         <div class="btn-group btn-group-sm">
-                            <button class="btn btn-outline-secondary" onclick="refreshProblems()">
-                                <i class="fas fa-sync"></i> Refresh
+                            <button class="btn btn-outline-secondary" onclick="exportProblems()">
+                                <i class="fas fa-download"></i> Export
                             </button>
                         </div>
                     </div>
@@ -421,8 +601,12 @@ $page_title = 'My Problems';
                                     <?php if ($problem['status'] === 'reported'): ?>
                                     <li><a class="dropdown-item" href="#" onclick="editProblem(<?php echo $problem['id']; ?>)">
                                         <i class="fas fa-edit"></i> Edit Problem</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteProblem(<?php echo $problem['id']; ?>)">
+                                        <i class="fas fa-trash"></i> Delete Problem</a></li>
                                     <?php endif; ?>
                                     <?php if ($problem['task_id']): ?>
+                                    <li><hr class="dropdown-divider"></li>
                                     <li><a class="dropdown-item" href="../mechanic/tasks.php?task_id=<?php echo $problem['task_id']; ?>">
                                         <i class="fas fa-wrench"></i> View Task</a></li>
                                     <?php endif; ?>
@@ -430,6 +614,25 @@ $page_title = 'My Problems';
                                     <li><a class="dropdown-item" href="#" onclick="addComment(<?php echo $problem['id']; ?>)">
                                         <i class="fas fa-comment"></i> Add Comment</a></li>
                                 </ul>
+                            </div>
+                        </div>
+                        
+                        <!-- Workflow Indicator -->
+                        <div class="workflow-indicator">
+                            <div class="workflow-step <?php echo $problem['status'] === 'reported' ? 'active' : 'completed'; ?>">
+                                Reported
+                            </div>
+                            <i class="fas fa-chevron-right text-muted"></i>
+                            <div class="workflow-step <?php echo $problem['status'] === 'assigned' ? 'active' : ($problem['status'] === 'reported' ? 'pending' : 'completed'); ?>">
+                                Assigned
+                            </div>
+                            <i class="fas fa-chevron-right text-muted"></i>
+                            <div class="workflow-step <?php echo $problem['status'] === 'in_progress' ? 'active' : ($problem['status'] === 'resolved' ? 'completed' : 'pending'); ?>">
+                                In Progress
+                            </div>
+                            <i class="fas fa-chevron-right text-muted"></i>
+                            <div class="workflow-step <?php echo $problem['status'] === 'resolved' ? 'active' : 'pending'; ?>">
+                                Resolved
                             </div>
                         </div>
                         
@@ -474,7 +677,17 @@ $page_title = 'My Problems';
                             <?php endif; ?>
                         </div>
                         
-                        <div class="d-flex justify-content-between align-items-center">
+                        <?php if ($problem['assigned_to_name']): ?>
+                        <div class="alert alert-info">
+                            <i class="fas fa-user"></i>
+                            <strong>Assigned to:</strong> <?php echo htmlspecialchars($problem['assigned_to_name'] . ' ' . $problem['assigned_to_lastname']); ?>
+                            <?php if ($problem['assigned_by_name']): ?>
+                            by <?php echo htmlspecialchars($problem['assigned_by_name'] . ' ' . $problem['assigned_by_lastname']); ?>
+                            <?php endif; ?>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <div class="d-flex justify-content-between align-items-center mb-2">
                             <div class="text-muted">
                                 <small>
                                     <strong>Impact:</strong> <?php echo ucfirst($problem['impact']); ?> |
@@ -484,22 +697,28 @@ $page_title = 'My Problems';
                                     <?php endif; ?>
                                 </small>
                             </div>
-                            
-                            <div class="btn-group btn-group-sm">
-                                <button class="btn btn-outline-primary" onclick="viewProblem(<?php echo $problem['id']; ?>)">
-                                    <i class="fas fa-eye"></i> View
-                                </button>
-                                <?php if ($problem['status'] === 'reported'): ?>
-                                <button class="btn btn-outline-warning" onclick="editProblem(<?php echo $problem['id']; ?>)">
-                                    <i class="fas fa-edit"></i> Edit
-                                </button>
-                                <?php endif; ?>
-                                <?php if ($problem['task_id']): ?>
-                                <a href="../mechanic/tasks.php?task_id=<?php echo $problem['task_id']; ?>" class="btn btn-outline-success">
-                                    <i class="fas fa-wrench"></i> Task
-                                </a>
-                                <?php endif; ?>
-                            </div>
+                        </div>
+                        
+                        <div class="problem-actions">
+                            <button class="btn btn-outline-primary btn-sm" onclick="viewProblem(<?php echo $problem['id']; ?>)">
+                                <i class="fas fa-eye"></i> View Details
+                            </button>
+                            <?php if ($problem['status'] === 'reported'): ?>
+                            <button class="btn btn-outline-warning btn-sm" onclick="editProblem(<?php echo $problem['id']; ?>)">
+                                <i class="fas fa-edit"></i> Edit
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteProblem(<?php echo $problem['id']; ?>)">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                            <?php endif; ?>
+                            <?php if ($problem['task_id']): ?>
+                            <a href="../mechanic/tasks.php?task_id=<?php echo $problem['task_id']; ?>" class="btn btn-outline-success btn-sm">
+                                <i class="fas fa-wrench"></i> View Task
+                            </a>
+                            <?php endif; ?>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="addComment(<?php echo $problem['id']; ?>)">
+                                <i class="fas fa-comment"></i> Comment
+                            </button>
                         </div>
                         
                         <?php if ($problem['resolved_at']): ?>
@@ -520,7 +739,7 @@ $page_title = 'My Problems';
                     <ul class="pagination justify-content-center">
                         <?php if ($page > 1): ?>
                         <li class="page-item">
-                            <a class="page-link" href="?page=<?php echo $page - 1; ?>&status=<?php echo $status_filter; ?>&priority=<?php echo $priority_filter; ?>&category=<?php echo $category_filter; ?>">
+                            <a class="page-link" href="?page=<?php echo $page - 1; ?>&status=<?php echo $status_filter; ?>&priority=<?php echo $priority_filter; ?>&category=<?php echo $category_filter; ?>&search=<?php echo urlencode($search); ?>">
                                 Previous
                             </a>
                         </li>
@@ -528,7 +747,7 @@ $page_title = 'My Problems';
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($total_pages, $page + 2); $i++): ?>
                         <li class="page-item <?php echo $i === $page ? 'active' : ''; ?>">
-                            <a class="page-link" href="?page=<?php echo $i; ?>&status=<?php echo $status_filter; ?>&priority=<?php echo $priority_filter; ?>&category=<?php echo $category_filter; ?>">
+                            <a class="page-link" href="?page=<?php echo $i; ?>&status=<?php echo $status_filter; ?>&priority=<?php echo $priority_filter; ?>&category=<?php echo $category_filter; ?>&search=<?php echo urlencode($search); ?>">
                                 <?php echo $i; ?>
                             </a>
                         </li>
@@ -536,7 +755,7 @@ $page_title = 'My Problems';
                         
                         <?php if ($page < $total_pages): ?>
                         <li class="page-item">
-                            <a class="page-link" href="?page=<?php echo $page + 1; ?>&status=<?php echo $status_filter; ?>&priority=<?php echo $priority_filter; ?>&category=<?php echo $category_filter; ?>">
+                            <a class="page-link" href="?page=<?php echo $page + 1; ?>&status=<?php echo $status_filter; ?>&priority=<?php echo $priority_filter; ?>&category=<?php echo $category_filter; ?>&search=<?php echo urlencode($search); ?>">
                                 Next
                             </a>
                         </li>
@@ -572,13 +791,74 @@ $page_title = 'My Problems';
     </nav>
     <?php endif; ?>
     
+    <!-- Quick Report Button -->
+    <button class="quick-report-btn" onclick="showReportProblemModal()" title="Report Problem">
+        <i class="fas fa-plus"></i>
+    </button>
+    
+    <!-- View Problem Modal -->
+    <div class="modal fade" id="viewProblemModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-eye"></i> Problem Details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="viewProblemContent">
+                    <!-- Content will be loaded here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Delete Problem Modal -->
+    <div class="modal fade" id="deleteProblemModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-trash"></i> Delete Problem</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="delete-confirm">
+                        <h6><i class="fas fa-exclamation-triangle"></i> Are you sure?</h6>
+                        <p>This action cannot be undone. The problem will be permanently deleted.</p>
+                        <p><strong>Note:</strong> Only problems with "Reported" status can be deleted.</p>
+                    </div>
+                    <div id="deleteProblemDetails">
+                        <!-- Problem details will be loaded here -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <form method="POST" style="display: inline;">
+                        <input type="hidden" name="action" value="delete_problem">
+                        <input type="hidden" name="problem_id" id="deleteProblemId">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> Delete Problem
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <!-- JavaScript -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        console.log('Operator Problems page loaded');
+        console.log('Enhanced Operator Problems page loaded');
         console.log('Total problems:', <?php echo $total_problems; ?>);
+        console.log('Current filters:', {
+            status: '<?php echo $status_filter; ?>',
+            priority: '<?php echo $priority_filter; ?>',
+            category: '<?php echo $category_filter; ?>',
+            search: '<?php echo $search; ?>'
+        });
         
         // Auto-dismiss alerts
         setTimeout(() => {
@@ -588,16 +868,175 @@ $page_title = 'My Problems';
                 bsAlert.close();
             });
         }, 5000);
+        
+        // Auto-submit search form on enter
+        const searchField = document.getElementById('search');
+        if (searchField) {
+            searchField.addEventListener('keyup', function(e) {
+                if (e.key === 'Enter') {
+                    this.form.submit();
+                }
+            });
+        }
     });
     
     function viewProblem(problemId) {
-        // For now, show a simple alert with problem ID
-        // Later, this can open a detailed modal or navigate to a detail page
-        showToast(`Viewing problem #${problemId} - Detail view coming soon!`, 'info');
+        console.log('Viewing problem:', problemId);
+        
+        fetch(`../api/problems.php?action=get_problem&id=${problemId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.problem) {
+                const problem = data.problem;
+                document.getElementById('viewProblemContent').innerHTML = `
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h6>${problem.title}</h6>
+                            <p class="text-muted">${problem.description || 'No description provided'}</p>
+                            
+                            <div class="row mb-3">
+                                <div class="col-sm-6">
+                                    <strong>Location:</strong> ${problem.location || 'Not specified'}
+                                </div>
+                                <div class="col-sm-6">
+                                    <strong>Equipment:</strong> ${problem.equipment || 'Not specified'}
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-sm-6">
+                                    <strong>Category:</strong> ${problem.category || 'Not specified'}
+                                </div>
+                                <div class="col-sm-6">
+                                    <strong>Reported:</strong> ${new Date(problem.created_at).toLocaleString()}
+                                </div>
+                            </div>
+                            
+                            ${problem.assigned_to_name ? `
+                            <div class="alert alert-info">
+                                <strong>Assigned to:</strong> ${problem.assigned_to_name} ${problem.assigned_to_lastname || ''}
+                                ${problem.assigned_by_name ? `by ${problem.assigned_by_name} ${problem.assigned_by_lastname || ''}` : ''}
+                            </div>
+                            ` : ''}
+                            
+                            ${problem.task_title ? `
+                            <div class="alert alert-success">
+                                <strong>Task Created:</strong> ${problem.task_title}
+                                <br><small>Status: ${problem.task_status}</small>
+                            </div>
+                            ` : ''}
+                            
+                            ${problem.resolved_at ? `
+                            <div class="alert alert-success">
+                                <strong>Resolved:</strong> ${new Date(problem.resolved_at).toLocaleString()}
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <span class="status-badge status-${problem.status}">
+                                    ${problem.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                </span>
+                            </div>
+                            <div class="mb-3">
+                                <span class="priority-badge priority-${problem.priority}">
+                                    ${problem.priority.charAt(0).toUpperCase() + problem.priority.slice(1)} Priority
+                                </span>
+                            </div>
+                            <div class="mb-3">
+                                <span class="severity-badge severity-${problem.severity}">
+                                    ${problem.severity.charAt(0).toUpperCase() + problem.severity.slice(1)} Severity
+                                </span>
+                            </div>
+                            
+                            <hr>
+                            
+                            <div class="mb-2">
+                                <strong>Impact:</strong> ${problem.impact.charAt(0).toUpperCase() + problem.impact.slice(1)}
+                            </div>
+                            <div class="mb-2">
+                                <strong>Urgency:</strong> ${problem.urgency.charAt(0).toUpperCase() + problem.urgency.slice(1)}
+                            </div>
+                            ${problem.estimated_resolution_time ? `
+                            <div class="mb-2">
+                                <strong>Est. Time:</strong> ${problem.estimated_resolution_time}h
+                            </div>
+                            ` : ''}
+                            
+                            ${problem.status === 'reported' ? `
+                            <hr>
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-warning btn-sm" onclick="editProblemFromView(${problem.id})">
+                                    <i class="fas fa-edit"></i> Edit Problem
+                                </button>
+                                <button class="btn btn-outline-danger btn-sm" onclick="deleteProblemFromView(${problem.id})">
+                                    <i class="fas fa-trash"></i> Delete Problem
+                                </button>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                const modal = new bootstrap.Modal(document.getElementById('viewProblemModal'));
+                modal.show();
+            } else {
+                showToast('Failed to load problem details', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('View problem error:', error);
+            showToast('Error loading problem: ' + error.message, 'danger');
+        });
     }
     
     function editProblem(problemId) {
-        showToast('Problem editing feature will be implemented soon!', 'info');
+        // Redirect to dashboard with edit modal
+        window.location.href = `dashboard.php#edit-problem-${problemId}`;
+    }
+    
+    function editProblemFromView(problemId) {
+        bootstrap.Modal.getInstance(document.getElementById('viewProblemModal')).hide();
+        setTimeout(() => editProblem(problemId), 300);
+    }
+    
+    function deleteProblem(problemId) {
+        console.log('Preparing to delete problem:', problemId);
+        
+        fetch(`../api/problems.php?action=get_problem&id=${problemId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.problem) {
+                const problem = data.problem;
+                
+                if (problem.status !== 'reported') {
+                    showToast('Only problems with "Reported" status can be deleted', 'warning');
+                    return;
+                }
+                
+                document.getElementById('deleteProblemId').value = problemId;
+                document.getElementById('deleteProblemDetails').innerHTML = `
+                    <p><strong>Problem:</strong> ${problem.title}</p>
+                    <p><strong>Status:</strong> ${problem.status}</p>
+                    <p><strong>Priority:</strong> ${problem.priority}</p>
+                    <p><strong>Reported:</strong> ${new Date(problem.created_at).toLocaleDateString()}</p>
+                `;
+                
+                const modal = new bootstrap.Modal(document.getElementById('deleteProblemModal'));
+                modal.show();
+            } else {
+                showToast('Failed to load problem details', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Delete preparation error:', error);
+            showToast('Error loading problem details', 'danger');
+        });
+    }
+    
+    function deleteProblemFromView(problemId) {
+        bootstrap.Modal.getInstance(document.getElementById('viewProblemModal')).hide();
+        setTimeout(() => deleteProblem(problemId), 300);
     }
     
     function addComment(problemId) {
@@ -610,7 +1049,14 @@ $page_title = 'My Problems';
     }
     
     function refreshProblems() {
-        location.reload();
+        showToast('Refreshing problems...', 'info');
+        setTimeout(() => {
+            location.reload();
+        }, 1000);
+    }
+    
+    function exportProblems() {
+        showToast('Export feature will be implemented soon!', 'info');
     }
     
     function showToast(message, type = 'info') {
