@@ -1,0 +1,65 @@
+graph TD
+    %% Operator Problem Reporting Workflow
+    A[Operator Identifies Problem] --> B[Report Problem via Dashboard]
+    B --> C{Problem Severity?}
+    
+    C -->|Urgent/Critical| D[Immediate Manager Notification]
+    C -->|High/Medium| E[Standard Manager Queue]
+    C -->|Low| F[Normal Processing Queue]
+    
+    %% Manager Review and Assignment
+    D --> G[Manager Reviews Problem]
+    E --> G
+    F --> G
+    
+    G --> H{Manager Decision}
+    H -->|Simple Fix| I[Assign Directly to Mechanic]
+    H -->|Complex Work| J[Convert to Formal Task]
+    H -->|Need More Info| K[Request Additional Details]
+    
+    %% Direct Assignment Path
+    I --> L[Mechanic Receives Assignment]
+    L --> M[Mechanic Works on Problem]
+    M --> N[Update Problem Status]
+    N --> O{Work Complete?}
+    O -->|Yes| P[Mark Problem Resolved]
+    O -->|No| M
+    
+    %% Task Conversion Path
+    J --> Q[Create Task from Problem]
+    Q --> R[Task Assigned to Mechanic]
+    R --> S[Standard Task Workflow]
+    S --> T[Task Completion]
+    T --> U[Auto-Update Problem Status]
+    
+    %% Information Flow
+    K --> V[Operator Provides More Details]
+    V --> G
+    
+    %% Notification System
+    P --> W[Notify Operator of Resolution]
+    U --> X[Notify Operator of Task Completion]
+    
+    %% Feedback Loop
+    W --> Y[Operator Confirms Resolution]
+    X --> Y
+    Y --> Z{Satisfied?}
+    Z -->|Yes| AA[Close Problem]
+    Z -->|No| BB[Reopen for Further Work]
+    BB --> G
+    
+    %% Reporting and Analytics
+    AA --> CC[Update System Metrics]
+    CC --> DD[Generate Reports]
+    DD --> EE[Manager Dashboard Analytics]
+    
+    %% Color coding for roles
+    classDef operatorClass fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+    classDef managerClass fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef mechanicClass fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef systemClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    
+    class A,B,C,V,Y,Z operatorClass
+    class D,E,F,G,H,I,J,K,EE managerClass
+    class L,M,R,S mechanicClass
+    class N,O,P,Q,T,U,W,X,AA,BB,CC,DD systemClass
