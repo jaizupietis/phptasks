@@ -891,3 +891,37 @@
 [2025-07-10 08:22:56] [INFO] [192.168.2.15] Application initialized
 [2025-07-10 08:23:15] [INFO] [192.168.2.15] Application initialized
 [2025-07-10 08:23:28] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:40:54] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:40:57] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:48:03] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:48:03] [INFO] [192.168.2.15] [User: 2] User logged out
+[2025-07-10 08:48:03] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:48:15] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:48:15] [INFO] [192.168.2.15] [User: 1] User admin logged in successfully
+[2025-07-10 08:48:15] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:48:19] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:48:19] [INFO] [192.168.2.15] [User: 1] User logged out
+[2025-07-10 08:48:19] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:53:02] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:53:02] [INFO] [192.168.2.15] [User: 1] User admin logged in successfully
+[2025-07-10 08:53:02] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:53:17] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:53:17] [INFO] [192.168.2.15] [User: 1] User logged out
+[2025-07-10 08:53:17] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:53:33] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:53:33] [WARNING] [192.168.2.15] Failed login attempt for username: operator
+[2025-07-10 08:53:44] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:53:44] [INFO] [192.168.2.15] [User: 5] User operator1 logged in successfully
+[2025-07-10 08:54:01] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:54:01] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:54:04] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:54:04] [INFO] [192.168.2.15] [User: 3] User mechanic1 logged in successfully
+[2025-07-10 08:54:04] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:54:07] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:54:07] [INFO] [192.168.2.15] [User: 3] User logged out
+[2025-07-10 08:54:07] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:54:17] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:54:17] [WARNING] [192.168.2.15] Failed login attempt for username: manager1
+[2025-07-10 08:54:24] [INFO] [192.168.2.15] Application initialized
+[2025-07-10 08:54:24] [INFO] [192.168.2.15] [User: 2] User manager1 logged in successfully
+[2025-07-10 08:54:24] [INFO] [192.168.2.15] Application initialized
