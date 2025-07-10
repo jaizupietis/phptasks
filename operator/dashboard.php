@@ -1,7 +1,8 @@
 <?php
 /**
- * Operator Dashboard
- * Problem reporting and management interface
+ * Enhanced Operator Dashboard
+ * Complete problem reporting and management interface with full CRUD operations
+ * Replace: /var/www/tasks/operator/dashboard.php
  */
 
 define('SECURE_ACCESS', true);
@@ -16,6 +17,39 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'operator') {
 $db = Database::getInstance();
 $user_id = $_SESSION['user_id'];
 $is_mobile = isMobile();
+
+// Handle problem deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_problem') {
+    $problem_id = (int)$_POST['problem_id'];
+    
+    try {
+        // Verify the problem belongs to the current user and can be deleted
+        $problem = $db->fetch(
+            "SELECT * FROM problems WHERE id = ? AND reported_by = ? AND status = 'reported'",
+            [$problem_id, $user_id]
+        );
+        
+        if ($problem) {
+            // Delete the problem (comments and notifications will be deleted automatically due to foreign keys)
+            $result = $db->query("DELETE FROM problems WHERE id = ?", [$problem_id]);
+            
+            if ($result->rowCount() > 0) {
+                logActivity("Problem deleted: {$problem['title']}", 'INFO', $user_id);
+                $_SESSION['success_message'] = 'Problem deleted successfully!';
+            } else {
+                $_SESSION['error_message'] = 'Failed to delete problem.';
+            }
+        } else {
+            $_SESSION['error_message'] = 'Problem not found or cannot be deleted.';
+        }
+    } catch (Exception $e) {
+        error_log("Problem deletion error: " . $e->getMessage());
+        $_SESSION['error_message'] = 'Error deleting problem: ' . $e->getMessage();
+    }
+    
+    header('Location: dashboard.php');
+    exit;
+}
 
 // Get user information
 $user = $db->fetch("SELECT * FROM users WHERE id = ?", [$user_id]);
@@ -51,19 +85,32 @@ $stats = [
     'urgent_problems' => $db->fetchCount(
         "SELECT COUNT(*) FROM problems WHERE reported_by = ? AND priority = 'urgent' AND status NOT IN ('resolved', 'closed')",
         [$user_id]
+    ),
+    'problems_today' => $db->fetchCount(
+        "SELECT COUNT(*) FROM problems WHERE reported_by = ? AND DATE(created_at) = CURDATE()",
+        [$user_id]
     )
 ];
 
-// Get recent problems
+// Get recent problems with detailed information
 $recent_problems = $db->fetchAll(
     "SELECT p.*, 
             ua.first_name as assigned_to_name, ua.last_name as assigned_to_lastname,
-            t.id as task_id, t.status as task_status
+            ub.first_name as assigned_by_name, ub.last_name as assigned_by_lastname,
+            t.id as task_id, t.status as task_status, t.title as task_title
      FROM problems p 
      LEFT JOIN users ua ON p.assigned_to = ua.id 
+     LEFT JOIN users ub ON p.assigned_by = ub.id 
      LEFT JOIN tasks t ON p.task_id = t.id
      WHERE p.reported_by = ? 
-     ORDER BY p.created_at DESC 
+     ORDER BY 
+        CASE 
+            WHEN p.status = 'reported' THEN 1 
+            WHEN p.priority = 'urgent' THEN 2 
+            WHEN p.priority = 'high' THEN 3 
+            ELSE 4 
+        END,
+        p.created_at DESC 
      LIMIT 10",
     [$user_id]
 );
@@ -123,6 +170,10 @@ $page_title = 'Operator Dashboard';
             padding: 1.5rem;
             cursor: pointer;
             transition: all 0.3s ease;
+            border-radius: 15px;
+            background: white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            border: none;
         }
         
         .stats-card:hover {
@@ -147,10 +198,26 @@ $page_title = 'Operator Dashboard';
         .stats-icon.danger { background: linear-gradient(135deg, var(--danger-color), #c82333); color: white; }
         .stats-icon.info { background: linear-gradient(135deg, var(--info-color), #138496); color: white; }
         
+        .stats-number {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: var(--operator-primary);
+        }
+        
+        .stats-label {
+            color: #6c757d;
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 0.875rem;
+            letter-spacing: 0.5px;
+        }
+        
         .problem-card {
             border-left: 4px solid var(--operator-primary);
             margin-bottom: 1rem;
             transition: all 0.3s ease;
+            position: relative;
         }
         
         .problem-card:hover {
@@ -229,9 +296,86 @@ $page_title = 'Operator Dashboard';
             color: white;
         }
         
+        .notification-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 20px;
+            height: 20px;
+            background: var(--danger-color);
+            color: white;
+            border-radius: 50%;
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+        }
+        
+        .problem-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+        
+        .problem-actions .btn {
+            flex: 1;
+            min-width: 80px;
+        }
+        
+        .delete-confirm {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 1rem;
+            border-radius: 5px;
+            margin: 1rem 0;
+        }
+        
+        .workflow-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.5rem 0;
+            font-size: 0.875rem;
+        }
+        
+        .workflow-step {
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .workflow-step.active {
+            background: var(--operator-primary);
+            color: white;
+        }
+        
+        .workflow-step.completed {
+            background: var(--success-color);
+            color: white;
+        }
+        
+        .workflow-step.pending {
+            background: #e9ecef;
+            color: #6c757d;
+        }
+        
         @media (max-width: 768px) {
             .quick-report-btn {
                 bottom: 90px;
+            }
+            
+            .problem-actions {
+                flex-direction: column;
+            }
+            
+            .stats-card {
+                margin-bottom: 1rem;
             }
         }
     </style>
@@ -265,21 +409,21 @@ $page_title = 'Operator Dashboard';
     <!-- Main Content -->
     <div class="container-fluid mt-4 <?php echo $is_mobile ? 'mobile-padding' : ''; ?>">
         
-        <!-- Success Message -->
-        <?php if (isset($_GET['success'])): ?>
+        <!-- Alert Messages -->
+        <?php if (isset($_SESSION['success_message'])): ?>
         <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="fas fa-check-circle"></i>
-            <?php 
-            switch($_GET['success']) {
-                case 'problem_reported':
-                    echo 'Problem reported successfully! Managers have been notified.';
-                    break;
-                default:
-                    echo 'Action completed successfully!';
-            }
-            ?>
+            <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($_SESSION['success_message']); ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
+        <?php unset($_SESSION['success_message']); ?>
+        <?php endif; ?>
+        
+        <?php if (isset($_SESSION['error_message'])): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($_SESSION['error_message']); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <?php unset($_SESSION['error_message']); ?>
         <?php endif; ?>
         
         <!-- Welcome Section -->
@@ -300,6 +444,11 @@ $page_title = 'Operator Dashboard';
                                 <p class="mb-0 opacity-90">
                                     Report problems and track their resolution status
                                 </p>
+                                <?php if ($stats['problems_today'] > 0): ?>
+                                <small class="opacity-75">
+                                    You've reported <?php echo $stats['problems_today']; ?> problem(s) today
+                                </small>
+                                <?php endif; ?>
                             </div>
                             <div class="col-auto">
                                 <button class="btn btn-light" onclick="showReportProblemModal()">
@@ -393,9 +542,14 @@ $page_title = 'Operator Dashboard';
                         <h5 class="mb-0">
                             <i class="fas fa-exclamation-triangle"></i> Recent Problems
                         </h5>
-                        <a href="problems.php" class="btn btn-sm btn-outline-primary">
-                            <i class="fas fa-eye"></i> View All
-                        </a>
+                        <div class="d-flex gap-2">
+                            <a href="problems.php" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-eye"></i> View All
+                            </a>
+                            <button class="btn btn-sm btn-operator" onclick="showReportProblemModal()">
+                                <i class="fas fa-plus"></i> Report New
+                            </button>
+                        </div>
                     </div>
                     <div class="card-body p-0">
                         <?php if (empty($recent_problems)): ?>
@@ -418,13 +572,55 @@ $page_title = 'Operator Dashboard';
                                         <?php echo htmlspecialchars($problem['title']); ?>
                                         <?php if ($problem['task_id']): ?>
                                         <span class="badge bg-success ms-2">
-                                            <i class="fas fa-wrench"></i> Task Created
+                                            <i class="fas fa-wrench"></i> Task #<?php echo $problem['task_id']; ?>
                                         </span>
                                         <?php endif; ?>
                                     </h6>
-                                    <span class="status-badge status-<?php echo $problem['status']; ?>">
-                                        <?php echo ucfirst(str_replace('_', ' ', $problem['status'])); ?>
-                                    </span>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="status-badge status-<?php echo $problem['status']; ?>">
+                                            <?php echo ucfirst(str_replace('_', ' ', $problem['status'])); ?>
+                                        </span>
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                                <i class="fas fa-ellipsis-v"></i>
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                <li><a class="dropdown-item" href="#" onclick="viewProblem(<?php echo $problem['id']; ?>)">
+                                                    <i class="fas fa-eye"></i> View Details</a></li>
+                                                <?php if ($problem['status'] === 'reported'): ?>
+                                                <li><a class="dropdown-item" href="#" onclick="editProblem(<?php echo $problem['id']; ?>)">
+                                                    <i class="fas fa-edit"></i> Edit Problem</a></li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><a class="dropdown-item text-danger" href="#" onclick="deleteProblem(<?php echo $problem['id']; ?>)">
+                                                    <i class="fas fa-trash"></i> Delete Problem</a></li>
+                                                <?php endif; ?>
+                                                <?php if ($problem['task_id']): ?>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><a class="dropdown-item" href="../mechanic/tasks.php?task_id=<?php echo $problem['task_id']; ?>">
+                                                    <i class="fas fa-wrench"></i> View Task</a></li>
+                                                <?php endif; ?>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Workflow Indicator -->
+                                <div class="workflow-indicator">
+                                    <div class="workflow-step <?php echo $problem['status'] === 'reported' ? 'active' : 'completed'; ?>">
+                                        Reported
+                                    </div>
+                                    <i class="fas fa-chevron-right text-muted"></i>
+                                    <div class="workflow-step <?php echo $problem['status'] === 'assigned' ? 'active' : ($problem['status'] === 'reported' ? 'pending' : 'completed'); ?>">
+                                        Assigned
+                                    </div>
+                                    <i class="fas fa-chevron-right text-muted"></i>
+                                    <div class="workflow-step <?php echo $problem['status'] === 'in_progress' ? 'active' : ($problem['status'] === 'resolved' ? 'completed' : 'pending'); ?>">
+                                        In Progress
+                                    </div>
+                                    <i class="fas fa-chevron-right text-muted"></i>
+                                    <div class="workflow-step <?php echo $problem['status'] === 'resolved' ? 'active' : 'pending'; ?>">
+                                        Resolved
+                                    </div>
                                 </div>
                                 
                                 <?php if ($problem['description']): ?>
@@ -465,7 +661,7 @@ $page_title = 'Operator Dashboard';
                                     <?php endif; ?>
                                 </div>
                                 
-                                <div class="d-flex justify-content-between align-items-center">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
                                     <div class="text-muted">
                                         <small>
                                             <i class="fas fa-clock"></i>
@@ -480,22 +676,47 @@ $page_title = 'Operator Dashboard';
                                         <?php endif; ?>
                                     </div>
                                     
-                                    <div class="btn-group btn-group-sm">
-                                        <a href="problems.php?problem_id=<?php echo $problem['id']; ?>" class="btn btn-outline-primary">
-                                            <i class="fas fa-eye"></i> View
-                                        </a>
-                                        <?php if ($problem['status'] === 'reported'): ?>
-                                        <button class="btn btn-outline-warning" onclick="editProblem(<?php echo $problem['id']; ?>)">
-                                            <i class="fas fa-edit"></i> Edit
-                                        </button>
-                                        <?php endif; ?>
-                                        <?php if ($problem['task_id']): ?>
-                                        <a href="../mechanic/tasks.php?task_id=<?php echo $problem['task_id']; ?>" class="btn btn-outline-success">
-                                            <i class="fas fa-wrench"></i> View Task
-                                        </a>
+                                    <div class="text-end">
+                                        <small class="text-muted">
+                                            <strong>Impact:</strong> <?php echo ucfirst($problem['impact']); ?> |
+                                            <strong>Urgency:</strong> <?php echo ucfirst($problem['urgency']); ?>
+                                        </small>
+                                        <?php if ($problem['estimated_resolution_time']): ?>
+                                        <br>
+                                        <small class="text-muted">
+                                            <strong>Est. Time:</strong> <?php echo $problem['estimated_resolution_time']; ?>h
+                                        </small>
                                         <?php endif; ?>
                                     </div>
                                 </div>
+                                
+                                <div class="problem-actions">
+                                    <button class="btn btn-outline-primary btn-sm" onclick="viewProblem(<?php echo $problem['id']; ?>)">
+                                        <i class="fas fa-eye"></i> View Details
+                                    </button>
+                                    <?php if ($problem['status'] === 'reported'): ?>
+                                    <button class="btn btn-outline-warning btn-sm" onclick="editProblem(<?php echo $problem['id']; ?>)">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" onclick="deleteProblem(<?php echo $problem['id']; ?>)">
+                                        <i class="fas fa-trash"></i> Delete
+                                    </button>
+                                    <?php endif; ?>
+                                    <?php if ($problem['task_id']): ?>
+                                    <a href="../mechanic/tasks.php?task_id=<?php echo $problem['task_id']; ?>" class="btn btn-outline-success btn-sm">
+                                        <i class="fas fa-wrench"></i> View Task
+                                    </a>
+                                    <?php endif; ?>
+                                </div>
+                                
+                                <?php if ($problem['resolved_at']): ?>
+                                <div class="mt-2">
+                                    <small class="text-success">
+                                        <i class="fas fa-check-circle"></i>
+                                        Resolved: <?php echo date('M j, Y g:i A', strtotime($problem['resolved_at'])); ?>
+                                    </small>
+                                </div>
+                                <?php endif; ?>
                             </div>
                             <?php endforeach; ?>
                         </div>
@@ -667,12 +888,170 @@ $page_title = 'Operator Dashboard';
         </div>
     </div>
     
+    <!-- Edit Problem Modal -->
+    <div class="modal fade" id="editProblemModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-edit"></i> Edit Problem</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="editProblemForm" novalidate>
+                    <input type="hidden" id="editProblemId">
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="mb-3">
+                                    <label for="editProblemTitle" class="form-label">Problem Title *</label>
+                                    <input type="text" class="form-control" id="editProblemTitle" required>
+                                    <div class="invalid-feedback">Please provide a problem title.</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="editProblemDescription" class="form-label">Detailed Description</label>
+                                    <textarea class="form-control" id="editProblemDescription" rows="4"></textarea>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="editProblemLocation" class="form-label">Location</label>
+                                            <input type="text" class="form-control" id="editProblemLocation">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="editProblemEquipment" class="form-label">Equipment/Asset</label>
+                                            <input type="text" class="form-control" id="editProblemEquipment">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="editProblemCategory" class="form-label">Category</label>
+                                    <select class="form-select" id="editProblemCategory">
+                                        <option value="">Select Category</option>
+                                        <option value="Mechanical">Mechanical</option>
+                                        <option value="Electrical">Electrical</option>
+                                        <option value="Hydraulic System">Hydraulic System</option>
+                                        <option value="Engine">Engine</option>
+                                        <option value="Brake System">Brake System</option>
+                                        <option value="Safety">Safety</option>
+                                        <option value="Environmental">Environmental</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="editProblemPriority" class="form-label">Priority *</label>
+                                    <select class="form-select" id="editProblemPriority" required>
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                        <option value="urgent">Urgent</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="editProblemSeverity" class="form-label">Severity</label>
+                                    <select class="form-select" id="editProblemSeverity">
+                                        <option value="minor">Minor</option>
+                                        <option value="moderate">Moderate</option>
+                                        <option value="major">Major</option>
+                                        <option value="critical">Critical</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="editProblemImpact" class="form-label">Impact</label>
+                                    <select class="form-select" id="editProblemImpact">
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                        <option value="critical">Critical</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="editProblemUrgency" class="form-label">Urgency</label>
+                                    <select class="form-select" id="editProblemUrgency">
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                        <option value="urgent">Urgent</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="editEstimatedTime" class="form-label">Estimated Resolution Time</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="editEstimatedTime" min="0.5" step="0.5">
+                                        <span class="input-group-text">hours</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-operator" id="editProblemBtn">
+                            <i class="fas fa-save"></i> Save Changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- View Problem Modal -->
+    <div class="modal fade" id="viewProblemModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-eye"></i> Problem Details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="viewProblemContent">
+                    <!-- Content will be loaded here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Delete Problem Modal -->
+    <div class="modal fade" id="deleteProblemModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-trash"></i> Delete Problem</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="delete-confirm">
+                        <h6><i class="fas fa-exclamation-triangle"></i> Are you sure?</h6>
+                        <p>This action cannot be undone. The problem will be permanently deleted.</p>
+                    </div>
+                    <div id="deleteProblemDetails">
+                        <!-- Problem details will be loaded here -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <form method="POST" style="display: inline;">
+                        <input type="hidden" name="action" value="delete_problem">
+                        <input type="hidden" name="problem_id" id="deleteProblemId">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> Delete Problem
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <!-- JavaScript -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        setupProblemForm();
+        setupForms();
         
         // Auto-dismiss alerts
         setTimeout(function() {
@@ -683,25 +1062,42 @@ $page_title = 'Operator Dashboard';
             });
         }, 5000);
         
-        console.log('Operator Dashboard loaded successfully');
+        console.log('Enhanced Operator Dashboard loaded successfully');
         console.log('User stats:', <?php echo json_encode($stats); ?>);
     });
     
-    function setupProblemForm() {
-        const form = document.getElementById('reportProblemForm');
-        if (!form) return;
+    function setupForms() {
+        // Report Problem Form
+        const reportForm = document.getElementById('reportProblemForm');
+        if (reportForm) {
+            reportForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                if (this.checkValidity()) {
+                    handleProblemReporting();
+                } else {
+                    this.classList.add('was-validated');
+                    showToast('Please check the form for errors', 'warning');
+                }
+            });
+        }
         
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            if (this.checkValidity()) {
-                handleProblemReporting();
-            } else {
-                this.classList.add('was-validated');
-                showToast('Please check the form for errors', 'warning');
-            }
-        });
+        // Edit Problem Form
+        const editForm = document.getElementById('editProblemForm');
+        if (editForm) {
+            editForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                if (this.checkValidity()) {
+                    handleProblemEdit();
+                } else {
+                    this.classList.add('was-validated');
+                    showToast('Please check the form for errors', 'warning');
+                }
+            });
+        }
     }
     
     function handleProblemReporting() {
@@ -799,6 +1195,67 @@ $page_title = 'Operator Dashboard';
         });
     }
     
+    function handleProblemEdit() {
+        const problemId = document.getElementById('editProblemId').value;
+        
+        const problemData = {
+            action: 'update_problem',
+            problem_id: parseInt(problemId),
+            title: document.getElementById('editProblemTitle').value.trim(),
+            description: document.getElementById('editProblemDescription').value.trim(),
+            priority: document.getElementById('editProblemPriority').value,
+            category: document.getElementById('editProblemCategory').value.trim(),
+            location: document.getElementById('editProblemLocation').value.trim(),
+            equipment: document.getElementById('editProblemEquipment').value.trim(),
+            severity: document.getElementById('editProblemSeverity').value,
+            impact: document.getElementById('editProblemImpact').value,
+            urgency: document.getElementById('editProblemUrgency').value,
+            estimated_resolution_time: parseFloat(document.getElementById('editEstimatedTime').value) || null
+        };
+        
+        console.log('Updating problem:', problemData);
+        
+        const submitBtn = document.getElementById('editProblemBtn');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        submitBtn.disabled = true;
+        
+        fetch('../api/problems.php', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(problemData),
+            credentials: 'same-origin'
+        })
+        .then(response => response.json())
+        .then(data => {
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+            
+            if (data.success) {
+                showToast('Problem updated successfully!', 'success');
+                
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editProblemModal'));
+                if (modal) modal.hide();
+                
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showToast('Error: ' + (data.message || 'Unknown error'), 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Edit error:', error);
+            showToast('Network error: ' + error.message, 'danger');
+            
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        });
+    }
+    
     function showReportProblemModal() {
         const form = document.getElementById('reportProblemForm');
         if (form) {
@@ -810,8 +1267,161 @@ $page_title = 'Operator Dashboard';
         modal.show();
     }
     
+    function viewProblem(problemId) {
+        console.log('Viewing problem:', problemId);
+        
+        fetch(`../api/problems.php?action=get_problem&id=${problemId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.problem) {
+                const problem = data.problem;
+                document.getElementById('viewProblemContent').innerHTML = `
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h6>${problem.title}</h6>
+                            <p class="text-muted">${problem.description || 'No description provided'}</p>
+                            
+                            <div class="row mb-3">
+                                <div class="col-sm-6">
+                                    <strong>Location:</strong> ${problem.location || 'Not specified'}
+                                </div>
+                                <div class="col-sm-6">
+                                    <strong>Equipment:</strong> ${problem.equipment || 'Not specified'}
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-sm-6">
+                                    <strong>Category:</strong> ${problem.category || 'Not specified'}
+                                </div>
+                                <div class="col-sm-6">
+                                    <strong>Reported:</strong> ${new Date(problem.created_at).toLocaleString()}
+                                </div>
+                            </div>
+                            
+                            ${problem.assigned_to_name ? `
+                            <div class="alert alert-info">
+                                <strong>Assigned to:</strong> ${problem.assigned_to_name} ${problem.assigned_to_lastname || ''}
+                            </div>
+                            ` : ''}
+                            
+                            ${problem.task_title ? `
+                            <div class="alert alert-success">
+                                <strong>Task Created:</strong> ${problem.task_title}
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <span class="status-badge status-${problem.status}">
+                                    ${problem.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                </span>
+                            </div>
+                            <div class="mb-3">
+                                <span class="priority-badge priority-${problem.priority}">
+                                    ${problem.priority.charAt(0).toUpperCase() + problem.priority.slice(1)} Priority
+                                </span>
+                            </div>
+                            <div class="mb-3">
+                                <span class="severity-badge severity-${problem.severity}">
+                                    ${problem.severity.charAt(0).toUpperCase() + problem.severity.slice(1)} Severity
+                                </span>
+                            </div>
+                            
+                            <hr>
+                            
+                            <div class="mb-2">
+                                <strong>Impact:</strong> ${problem.impact.charAt(0).toUpperCase() + problem.impact.slice(1)}
+                            </div>
+                            <div class="mb-2">
+                                <strong>Urgency:</strong> ${problem.urgency.charAt(0).toUpperCase() + problem.urgency.slice(1)}
+                            </div>
+                            ${problem.estimated_resolution_time ? `
+                            <div class="mb-2">
+                                <strong>Est. Time:</strong> ${problem.estimated_resolution_time}h
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                const modal = new bootstrap.Modal(document.getElementById('viewProblemModal'));
+                modal.show();
+            } else {
+                showToast('Failed to load problem details', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('View problem error:', error);
+            showToast('Error loading problem: ' + error.message, 'danger');
+        });
+    }
+    
     function editProblem(problemId) {
-        showToast('Problem editing feature will be implemented soon!', 'info');
+        console.log('Editing problem:', problemId);
+        
+        fetch(`../api/problems.php?action=get_problem&id=${problemId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.problem) {
+                const problem = data.problem;
+                
+                // Populate edit form
+                document.getElementById('editProblemId').value = problem.id;
+                document.getElementById('editProblemTitle').value = problem.title || '';
+                document.getElementById('editProblemDescription').value = problem.description || '';
+                document.getElementById('editProblemLocation').value = problem.location || '';
+                document.getElementById('editProblemEquipment').value = problem.equipment || '';
+                document.getElementById('editProblemCategory').value = problem.category || '';
+                document.getElementById('editProblemPriority').value = problem.priority || 'medium';
+                document.getElementById('editProblemSeverity').value = problem.severity || 'moderate';
+                document.getElementById('editProblemImpact').value = problem.impact || 'medium';
+                document.getElementById('editProblemUrgency').value = problem.urgency || 'medium';
+                document.getElementById('editEstimatedTime').value = problem.estimated_resolution_time || '';
+                
+                // Clear validation
+                const form = document.getElementById('editProblemForm');
+                form.classList.remove('was-validated');
+                
+                const modal = new bootstrap.Modal(document.getElementById('editProblemModal'));
+                modal.show();
+            } else {
+                showToast('Failed to load problem details', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Edit problem error:', error);
+            showToast('Error loading problem: ' + error.message, 'danger');
+        });
+    }
+    
+    function deleteProblem(problemId) {
+        console.log('Preparing to delete problem:', problemId);
+        
+        fetch(`../api/problems.php?action=get_problem&id=${problemId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.problem) {
+                const problem = data.problem;
+                
+                document.getElementById('deleteProblemId').value = problemId;
+                document.getElementById('deleteProblemDetails').innerHTML = `
+                    <p><strong>Problem:</strong> ${problem.title}</p>
+                    <p><strong>Status:</strong> ${problem.status}</p>
+                    <p><strong>Priority:</strong> ${problem.priority}</p>
+                    <p><strong>Reported:</strong> ${new Date(problem.created_at).toLocaleDateString()}</p>
+                `;
+                
+                const modal = new bootstrap.Modal(document.getElementById('deleteProblemModal'));
+                modal.show();
+            } else {
+                showToast('Failed to load problem details', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Delete preparation error:', error);
+            showToast('Error loading problem details', 'danger');
+        });
     }
     
     function showUrgentProblems() {
@@ -866,7 +1476,7 @@ $page_title = 'Operator Dashboard';
         return icons[type] || 'info-circle';
     }
     
-    // Test API function
+    // Test API function for debugging
     function testProblemsAPI() {
         console.log('Testing Problems API...');
         
@@ -882,18 +1492,6 @@ $page_title = 'Operator Dashboard';
             showToast('❌ API Test Failed: ' + err.message, 'danger');
         });
     }
-    
-    // Add debug button for testing
-    setTimeout(() => {
-        const navbar = document.querySelector('.navbar .container-fluid');
-        if (navbar && window.location.hostname === 'localhost') {
-            const debugBtn = document.createElement('button');
-            debugBtn.className = 'btn btn-outline-light btn-sm me-2';
-            debugBtn.innerHTML = '<i class="fas fa-bug"></i> Test API';
-            debugBtn.onclick = testProblemsAPI;
-            navbar.appendChild(debugBtn);
-        }
-    }, 1000);
     </script>
 </body>
 </html>
