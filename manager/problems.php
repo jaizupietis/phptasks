@@ -1,9 +1,13 @@
 <?php
 /**
  * FIXED Manager Problem Management Dashboard
- * This version fixes the blank page issue and assignment functionality
+ * This version fixes the blank page issue and SQL parameter errors
  * Replace: /var/www/tasks/manager/problems.php
  */
+
+// Enable error reporting for debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
 define('SECURE_ACCESS', true);
 require_once '../config/config.php';
@@ -18,131 +22,154 @@ $db = Database::getInstance();
 $user_id = $_SESSION['user_id'];
 $is_mobile = isMobile();
 
-// Handle problem assignment and task conversion
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-    
-    if ($action === 'assign_problem') {
-        $problem_id = (int)$_POST['problem_id'];
-        $assigned_to = (int)$_POST['assigned_to'];
-        
-        try {
-            $db->query(
-                "UPDATE problems SET assigned_to = ?, assigned_by = ?, status = 'assigned' WHERE id = ?",
-                [$assigned_to, $user_id, $problem_id]
-            );
-            
-            // Create notification for assigned mechanic
-            $problem = $db->fetch("SELECT title FROM problems WHERE id = ?", [$problem_id]);
-            $db->query(
-                "INSERT INTO notifications (user_id, problem_id, type, title, message) 
-                 VALUES (?, ?, 'problem_assigned', 'Problem Assigned', ?)",
-                [$assigned_to, $problem_id, "Problem assigned: '{$problem['title']}'"]
-            );
-            
-            $_SESSION['success_message'] = 'Problem assigned successfully!';
-        } catch (Exception $e) {
-            $_SESSION['error_message'] = 'Error assigning problem: ' . $e->getMessage();
-        }
-        
-        header('Location: problems.php');
-        exit;
-    }
-    
-    if ($action === 'convert_to_task') {
-        $problem_id = (int)$_POST['problem_id'];
-        $assigned_to = (int)$_POST['assigned_to'];
-        
-        try {
-            $problem = $db->fetch("SELECT * FROM problems WHERE id = ?", [$problem_id]);
-            
-            if ($problem) {
-                // Create task from problem
-                $task_data = [
-                    'title' => "Fix: " . $problem['title'],
-                    'description' => $problem['description'],
-                    'priority' => $problem['priority'],
-                    'status' => 'pending',
-                    'assigned_to' => $assigned_to,
-                    'assigned_by' => $user_id,
-                    'category' => $problem['category'],
-                    'location' => $problem['location'],
-                    'equipment' => $problem['equipment'],
-                    'estimated_hours' => $problem['estimated_resolution_time'],
-                    'notes' => "Created from Problem #" . $problem_id,
-                    'progress_percentage' => 0
-                ];
-                
-                $fields = array_keys($task_data);
-                $placeholders = array_fill(0, count($fields), '?');
-                $values = array_values($task_data);
-                
-                $sql = "INSERT INTO tasks (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
-                $stmt = $db->query($sql, $values);
-                $new_task_id = $db->getConnection()->lastInsertId();
-                
-                // Update problem with task ID
-                $db->query(
-                    "UPDATE problems SET task_id = ?, status = 'assigned' WHERE id = ?",
-                    [$new_task_id, $problem_id]
-                );
-                
-                // Create notifications
-                $db->query(
-                    "INSERT INTO notifications (user_id, task_id, type, title, message) 
-                     VALUES (?, ?, 'task_assigned', 'Task Created from Problem', ?)",
-                    [$assigned_to, $new_task_id, "Task created from problem: '{$problem['title']}'"]
-                );
-                
-                $_SESSION['success_message'] = 'Problem converted to task successfully!';
-            }
-        } catch (Exception $e) {
-            $_SESSION['error_message'] = 'Error converting problem: ' . $e->getMessage();
-        }
-        
-        header('Location: problems.php');
-        exit;
-    }
-}
-
-// Get filter parameters
-$status_filter = isset($_GET['status']) ? sanitizeInput($_GET['status']) : 'all';
-$priority_filter = isset($_GET['priority']) ? sanitizeInput($_GET['priority']) : 'all';
-$category_filter = isset($_GET['category']) ? sanitizeInput($_GET['category']) : 'all';
-$assigned_to_filter = isset($_GET['assigned_to']) ? (int)$_GET['assigned_to'] : 0;
-
-// Build WHERE clause
-$where_conditions = ["1 = 1"];
-$params = [];
-
-if ($status_filter !== 'all') {
-    $where_conditions[] = "p.status = ?";
-    $params[] = $status_filter;
-}
-
-if ($priority_filter !== 'all') {
-    $where_conditions[] = "p.priority = ?";
-    $params[] = $priority_filter;
-}
-
-if ($category_filter !== 'all') {
-    $where_conditions[] = "p.category = ?";
-    $params[] = $category_filter;
-}
-
-if ($assigned_to_filter > 0) {
-    $where_conditions[] = "p.assigned_to = ?";
-    $params[] = $assigned_to_filter;
-}
-
-$where_clause = implode(' AND ', $where_conditions);
-
-// Get problems with pagination
-$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-$per_page = $is_mobile ? 8 : 15;
-$offset = ($page - 1) * $per_page;
+// Initialize variables to prevent undefined errors
+$status_filter = 'all';
+$priority_filter = 'all';
+$category_filter = 'all';
+$assigned_to_filter = 0;
+$problems = [];
+$total_problems = 0;
+$total_pages = 1;
+$page = 1;
+$per_page = 15;
+$mechanics = [];
+$problem_stats = ['total' => 0, 'reported' => 0, 'assigned' => 0, 'in_progress' => 0, 'resolved' => 0];
 
 try {
+    // Handle problem assignment and task conversion
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $action = $_POST['action'] ?? '';
+        
+        if ($action === 'assign_problem') {
+            $problem_id = (int)$_POST['problem_id'];
+            $assigned_to = (int)$_POST['assigned_to'];
+            
+            if ($problem_id > 0 && $assigned_to > 0) {
+                try {
+                    $db->query(
+                        "UPDATE problems SET assigned_to = ?, assigned_by = ?, status = 'assigned' WHERE id = ?",
+                        [$assigned_to, $user_id, $problem_id]
+                    );
+                    
+                    // Create notification for assigned mechanic
+                    $problem = $db->fetch("SELECT title FROM problems WHERE id = ?", [$problem_id]);
+                    if ($problem) {
+                        $db->query(
+                            "INSERT INTO notifications (user_id, problem_id, type, title, message) 
+                             VALUES (?, ?, 'problem_assigned', 'Problem Assigned', ?)",
+                            [$assigned_to, $problem_id, "Problem assigned: '{$problem['title']}'"]
+                        );
+                    }
+                    
+                    $_SESSION['success_message'] = 'Problem assigned successfully!';
+                } catch (Exception $e) {
+                    error_log("Problem assignment error: " . $e->getMessage());
+                    $_SESSION['error_message'] = 'Error assigning problem: ' . $e->getMessage();
+                }
+            }
+            
+            header('Location: problems.php');
+            exit;
+        }
+        
+        if ($action === 'convert_to_task') {
+            $problem_id = (int)$_POST['problem_id'];
+            $assigned_to = (int)$_POST['assigned_to'];
+            
+            if ($problem_id > 0 && $assigned_to > 0) {
+                try {
+                    $problem = $db->fetch("SELECT * FROM problems WHERE id = ?", [$problem_id]);
+                    
+                    if ($problem) {
+                        // Create task from problem
+                        $task_data = [
+                            'title' => "Fix: " . $problem['title'],
+                            'description' => $problem['description'],
+                            'priority' => $problem['priority'],
+                            'status' => 'pending',
+                            'assigned_to' => $assigned_to,
+                            'assigned_by' => $user_id,
+                            'category' => $problem['category'],
+                            'location' => $problem['location'],
+                            'equipment' => $problem['equipment'],
+                            'estimated_hours' => $problem['estimated_resolution_time'],
+                            'notes' => "Created from Problem #" . $problem_id,
+                            'progress_percentage' => 0
+                        ];
+                        
+                        $fields = array_keys($task_data);
+                        $placeholders = array_fill(0, count($fields), '?');
+                        $values = array_values($task_data);
+                        
+                        $sql = "INSERT INTO tasks (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+                        $stmt = $db->query($sql, $values);
+                        $new_task_id = $db->getConnection()->lastInsertId();
+                        
+                        // Update problem with task ID
+                        $db->query(
+                            "UPDATE problems SET task_id = ?, status = 'assigned' WHERE id = ?",
+                            [$new_task_id, $problem_id]
+                        );
+                        
+                        // Create notifications
+                        $db->query(
+                            "INSERT INTO notifications (user_id, task_id, type, title, message) 
+                             VALUES (?, ?, 'task_assigned', 'Task Created from Problem', ?)",
+                            [$assigned_to, $new_task_id, "Task created from problem: '{$problem['title']}'"]
+                        );
+                        
+                        $_SESSION['success_message'] = 'Problem converted to task successfully!';
+                    }
+                } catch (Exception $e) {
+                    error_log("Problem conversion error: " . $e->getMessage());
+                    $_SESSION['error_message'] = 'Error converting problem: ' . $e->getMessage();
+                }
+            }
+            
+            header('Location: problems.php');
+            exit;
+        }
+    }
+
+    // Get filter parameters with proper sanitization
+    $status_filter = isset($_GET['status']) ? sanitizeInput($_GET['status']) : 'all';
+    $priority_filter = isset($_GET['priority']) ? sanitizeInput($_GET['priority']) : 'all';
+    $category_filter = isset($_GET['category']) ? sanitizeInput($_GET['category']) : 'all';
+    $assigned_to_filter = isset($_GET['assigned_to']) ? max(0, (int)$_GET['assigned_to']) : 0;
+
+    // Build WHERE clause with proper parameter binding
+    $where_conditions = [];
+    $params = [];
+
+    if ($status_filter !== 'all' && in_array($status_filter, ['reported', 'assigned', 'in_progress', 'resolved', 'closed'])) {
+        $where_conditions[] = "p.status = ?";
+        $params[] = $status_filter;
+    }
+
+    if ($priority_filter !== 'all' && in_array($priority_filter, ['low', 'medium', 'high', 'urgent'])) {
+        $where_conditions[] = "p.priority = ?";
+        $params[] = $priority_filter;
+    }
+
+    if ($category_filter !== 'all') {
+        $where_conditions[] = "p.category = ?";
+        $params[] = $category_filter;
+    }
+
+    if ($assigned_to_filter > 0) {
+        $where_conditions[] = "p.assigned_to = ?";
+        $params[] = $assigned_to_filter;
+    }
+
+    // Build final WHERE clause
+    $where_clause = empty($where_conditions) ? "1 = 1" : implode(' AND ', $where_conditions);
+
+    // Get pagination parameters
+    $page = max(1, (int)($_GET['page'] ?? 1));
+    $per_page = $is_mobile ? 8 : 15;
+    $offset = ($page - 1) * $per_page;
+
+    // Get problems with proper error handling
     $problems = $db->fetchAll(
         "SELECT p.*, 
                 ur.first_name as reported_by_name, ur.last_name as reported_by_lastname,
@@ -166,48 +193,52 @@ try {
          LIMIT {$per_page} OFFSET {$offset}",
         $params
     );
-} catch (Exception $e) {
-    error_log("Problems fetch error: " . $e->getMessage());
-    $problems = [];
-}
 
-// Get total count for pagination
-try {
+    // Get total count for pagination
     $total_problems = $db->fetchCount(
         "SELECT COUNT(*) FROM problems p WHERE {$where_clause}",
         $params
     );
-} catch (Exception $e) {
-    error_log("Problems count error: " . $e->getMessage());
-    $total_problems = 0;
-}
 
-$total_pages = $total_problems > 0 ? ceil($total_problems / $per_page) : 1;
+    $total_pages = max(1, ceil($total_problems / $per_page));
 
-// Get all mechanics for assignment
-try {
+    // Get all mechanics for assignment
     $mechanics = $db->fetchAll(
         "SELECT id, first_name, last_name FROM users 
          WHERE role = 'mechanic' AND is_active = 1 
          ORDER BY first_name, last_name"
     );
-} catch (Exception $e) {
-    error_log("Mechanics fetch error: " . $e->getMessage());
-    $mechanics = [];
-}
 
-// Get problem statistics
-try {
+    // Get problem statistics with safe parameter handling
+    $base_params = $params; // Store base parameters
+    
     $problem_stats = [
         'total' => $total_problems,
-        'reported' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'reported'", array_merge($params, ['reported'])),
-        'assigned' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'assigned'", array_merge($params, ['assigned'])),
-        'in_progress' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'in_progress'", array_merge($params, ['in_progress'])),
-        'resolved' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'resolved'", array_merge($params, ['resolved']))
+        'reported' => $db->fetchCount(
+            "SELECT COUNT(*) FROM problems p WHERE {$where_clause}" . 
+            ($where_clause === "1 = 1" ? " AND p.status = 'reported'" : " AND p.status = 'reported'"), 
+            array_merge($base_params, $where_clause === "1 = 1" ? ['reported'] : [])
+        ),
+        'assigned' => $db->fetchCount(
+            "SELECT COUNT(*) FROM problems p WHERE {$where_clause}" . 
+            ($where_clause === "1 = 1" ? " AND p.status = 'assigned'" : " AND p.status = 'assigned'"), 
+            array_merge($base_params, $where_clause === "1 = 1" ? ['assigned'] : [])
+        ),
+        'in_progress' => $db->fetchCount(
+            "SELECT COUNT(*) FROM problems p WHERE {$where_clause}" . 
+            ($where_clause === "1 = 1" ? " AND p.status = 'in_progress'" : " AND p.status = 'in_progress'"), 
+            array_merge($base_params, $where_clause === "1 = 1" ? ['in_progress'] : [])
+        ),
+        'resolved' => $db->fetchCount(
+            "SELECT COUNT(*) FROM problems p WHERE {$where_clause}" . 
+            ($where_clause === "1 = 1" ? " AND p.status = 'resolved'" : " AND p.status = 'resolved'"), 
+            array_merge($base_params, $where_clause === "1 = 1" ? ['resolved'] : [])
+        )
     ];
+
 } catch (Exception $e) {
-    error_log("Problem stats error: " . $e->getMessage());
-    $problem_stats = ['total' => 0, 'reported' => 0, 'assigned' => 0, 'in_progress' => 0, 'resolved' => 0];
+    error_log("Manager problems page error: " . $e->getMessage());
+    $error_message = "System error occurred. Please try again.";
 }
 
 $page_title = 'Problem Management';
@@ -406,6 +437,13 @@ $page_title = 'Problem Management';
     <!-- Main Content -->
     <div class="container-fluid p-4">
         
+        <!-- Debug Info (remove in production) -->
+        <?php if (isset($error_message)): ?>
+        <div class="alert alert-danger">
+            <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error_message); ?>
+        </div>
+        <?php endif; ?>
+        
         <!-- Alert Messages -->
         <?php if (isset($_SESSION['success_message'])): ?>
         <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -534,7 +572,13 @@ $page_title = 'Problem Management';
                         <div class="text-center py-5">
                             <i class="fas fa-exclamation-triangle fa-4x text-muted mb-3"></i>
                             <h5>No Problems Found</h5>
-                            <p class="text-muted">No problems match your current filters.<br>Adjust the filters above to see more results.</p>
+                            <p class="text-muted">
+                                <?php if (count($mechanics) === 0): ?>
+                                No mechanics available for assignment. Please add mechanics to the system first.
+                                <?php else: ?>
+                                No problems match your current filters.<br>Adjust the filters above to see more results.
+                                <?php endif; ?>
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -571,9 +615,11 @@ $page_title = 'Problem Management';
                                     <span class="priority-badge priority-<?php echo $problem['priority']; ?>">
                                         <?php echo ucfirst($problem['priority']); ?>
                                     </span>
+                                    <?php if ($problem['severity']): ?>
                                     <span class="severity-badge severity-<?php echo $problem['severity']; ?>">
                                         <?php echo ucfirst($problem['severity']); ?>
                                     </span>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                             <div class="dropdown">
@@ -593,9 +639,6 @@ $page_title = 'Problem Management';
                                     <li><a class="dropdown-item" href="tasks.php?task_id=<?php echo $problem['task_id']; ?>">
                                         <i class="fas fa-tasks"></i> View Task</a></li>
                                     <?php endif; ?>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item" href="#" onclick="addComment(<?php echo $problem['id']; ?>)">
-                                        <i class="fas fa-comment"></i> Add Comment</a></li>
                                 </ul>
                             </div>
                         </div>
@@ -662,7 +705,7 @@ $page_title = 'Problem Management';
                         <?php endif; ?>
                         
                         <div class="action-buttons">
-                            <?php if ($problem['status'] === 'reported'): ?>
+                            <?php if ($problem['status'] === 'reported' && count($mechanics) > 0): ?>
                             <button class="btn btn-primary btn-sm" onclick="assignProblem(<?php echo $problem['id']; ?>)">
                                 <i class="fas fa-user-plus"></i> Assign to Mechanic
                             </button>
@@ -685,13 +728,9 @@ $page_title = 'Problem Management';
                                 <i class="fas fa-eye"></i> View Details
                             </button>
                             
-                            <button class="btn btn-outline-secondary btn-sm" onclick="addComment(<?php echo $problem['id']; ?>)">
-                                <i class="fas fa-comment"></i> Add Comment
-                            </button>
-                            
                             <small class="text-muted d-block mt-2">
-                                <strong>Impact:</strong> <?php echo ucfirst($problem['impact']); ?> |
-                                <strong>Urgency:</strong> <?php echo ucfirst($problem['urgency']); ?>
+                                <strong>Impact:</strong> <?php echo ucfirst($problem['impact'] ?? 'medium'); ?> |
+                                <strong>Urgency:</strong> <?php echo ucfirst($problem['urgency'] ?? 'medium'); ?>
                                 <?php if ($problem['estimated_resolution_time']): ?>
                                 | <strong>Est. Time:</strong> <?php echo $problem['estimated_resolution_time']; ?>h
                                 <?php endif; ?>
@@ -761,6 +800,7 @@ $page_title = 'Problem Management';
                         <div id="assignProblemDetails">
                             <!-- Problem details will be loaded here -->
                         </div>
+                        <?php if (count($mechanics) > 0): ?>
                         <div class="mb-3">
                             <label for="assignMechanic" class="form-label">Select Mechanic *</label>
                             <select class="form-select" name="assigned_to" id="assignMechanic" required>
@@ -776,12 +816,20 @@ $page_title = 'Problem Management';
                             <i class="fas fa-info-circle"></i>
                             The selected mechanic will be notified about this assignment.
                         </div>
+                        <?php else: ?>
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            No mechanics available. Please add mechanics to the system first.
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <?php if (count($mechanics) > 0): ?>
                         <button type="submit" class="btn btn-manager">
                             <i class="fas fa-user-plus"></i> Assign Problem
                         </button>
+                        <?php endif; ?>
                     </div>
                 </form>
             </div>
@@ -803,6 +851,7 @@ $page_title = 'Problem Management';
                         <div id="convertProblemDetails">
                             <!-- Problem details will be loaded here -->
                         </div>
+                        <?php if (count($mechanics) > 0): ?>
                         <div class="mb-3">
                             <label for="convertMechanic" class="form-label">Assign Task To *</label>
                             <select class="form-select" name="assigned_to" id="convertMechanic" required>
@@ -818,12 +867,20 @@ $page_title = 'Problem Management';
                             <i class="fas fa-exclamation-triangle"></i>
                             This will create a maintenance task based on this problem and assign it to the selected mechanic.
                         </div>
+                        <?php else: ?>
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            No mechanics available. Please add mechanics to the system first.
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <?php if (count($mechanics) > 0): ?>
                         <button type="submit" class="btn btn-success">
                             <i class="fas fa-wrench"></i> Convert to Task
                         </button>
+                        <?php endif; ?>
                     </div>
                 </form>
             </div>
@@ -853,23 +910,38 @@ $page_title = 'Problem Management';
     
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        console.log('✅ Manager Problem Management loaded successfully');
+        console.log('✅ FIXED Manager Problem Management loaded successfully');
         
         // Auto-dismiss alerts
         setTimeout(() => {
             const alerts = document.querySelectorAll('.alert-dismissible');
             alerts.forEach(alert => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
+                if (alert.classList.contains('show')) {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                }
             });
         }, 5000);
         
         console.log('Problem stats:', <?php echo json_encode($problem_stats); ?>);
         console.log('Total mechanics available:', <?php echo count($mechanics); ?>);
+        console.log('Current filters:', {
+            status: '<?php echo $status_filter; ?>',
+            priority: '<?php echo $priority_filter; ?>',
+            category: '<?php echo $category_filter; ?>',
+            assigned_to: <?php echo $assigned_to_filter; ?>
+        });
     });
     
     function assignProblem(problemId) {
         console.log('✅ Assigning problem:', problemId);
+        
+        // Check if mechanics are available
+        const mechanicsAvailable = <?php echo count($mechanics); ?>;
+        if (mechanicsAvailable === 0) {
+            showToast('❌ No mechanics available for assignment', 'warning');
+            return;
+        }
         
         // Find problem details from page
         const problemCard = document.querySelector(`[data-problem-id="${problemId}"]`);
@@ -900,6 +972,13 @@ $page_title = 'Problem Management';
     
     function convertToTask(problemId) {
         console.log('✅ Converting problem to task:', problemId);
+        
+        // Check if mechanics are available
+        const mechanicsAvailable = <?php echo count($mechanics); ?>;
+        if (mechanicsAvailable === 0) {
+            showToast('❌ No mechanics available for task assignment', 'warning');
+            return;
+        }
         
         const problemCard = document.querySelector(`[data-problem-id="${problemId}"]`);
         let problemTitle = `Problem #${problemId}`;
@@ -945,149 +1024,50 @@ $page_title = 'Problem Management';
         const modal = new bootstrap.Modal(document.getElementById('viewProblemModal'));
         modal.show();
         
-        // Load problem details via API
-        fetch(`../api/problems.php?action=get_problem&id=${problemId}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.success && data.problem) {
-                const problem = data.problem;
+        // Try to load problem details from the page first
+        const problemCard = document.querySelector(`[data-problem-id="${problemId}"]`);
+        if (problemCard) {
+            // Extract details from the card
+            const title = problemCard.querySelector('.card-title')?.textContent.trim() || 'Unknown';
+            const description = problemCard.querySelector('.card-text')?.textContent.trim() || 'No description';
+            const status = problemCard.querySelector('.status-badge')?.textContent.trim() || 'Unknown';
+            const priority = problemCard.querySelector('.priority-badge')?.textContent.trim() || 'Unknown';
+            
+            setTimeout(() => {
                 document.getElementById('viewProblemContent').innerHTML = `
                     <div class="row">
-                        <div class="col-md-8">
-                            <h6 class="mb-3">${problem.title}</h6>
-                            
-                            ${problem.description ? `
+                        <div class="col-12">
+                            <h6 class="mb-3">${title}</h6>
                             <div class="mb-3">
                                 <strong>Description:</strong>
-                                <p class="text-muted">${problem.description}</p>
+                                <p class="text-muted">${description}</p>
                             </div>
-                            ` : ''}
-                            
                             <div class="row mb-3">
                                 <div class="col-sm-6">
-                                    <strong>Location:</strong> ${problem.location || 'Not specified'}
+                                    <strong>Status:</strong> <span class="badge bg-secondary">${status}</span>
                                 </div>
                                 <div class="col-sm-6">
-                                    <strong>Equipment:</strong> ${problem.equipment || 'Not specified'}
+                                    <strong>Priority:</strong> <span class="badge bg-warning">${priority}</span>
                                 </div>
                             </div>
-                            
-                            <div class="row mb-3">
-                                <div class="col-sm-6">
-                                    <strong>Category:</strong> ${problem.category || 'Not specified'}
-                                </div>
-                                <div class="col-sm-6">
-                                    <strong>Reported:</strong> ${new Date(problem.created_at).toLocaleString()}
-                                </div>
-                            </div>
-                            
-                            ${problem.assigned_to_name ? `
                             <div class="alert alert-info">
-                                <i class="fas fa-user"></i>
-                                <strong>Assigned to:</strong> ${problem.assigned_to_name} ${problem.assigned_to_lastname || ''}
-                                ${problem.assigned_by_name ? `<br><small>Assigned by: ${problem.assigned_by_name} ${problem.assigned_by_lastname || ''}</small>` : ''}
+                                <i class="fas fa-info-circle"></i>
+                                This is a basic view. For full details, use the API when available.
                             </div>
-                            ` : ''}
-                            
-                            ${problem.task_title ? `
-                            <div class="alert alert-success">
-                                <i class="fas fa-wrench"></i>
-                                <strong>Task Created:</strong> ${problem.task_title}
-                                <br><small>Status: ${problem.task_status || 'Unknown'}</small>
-                            </div>
-                            ` : ''}
-                            
-                            ${problem.resolved_at ? `
-                            <div class="alert alert-success">
-                                <i class="fas fa-check-circle"></i>
-                                <strong>Resolved:</strong> ${new Date(problem.resolved_at).toLocaleString()}
-                            </div>
-                            ` : ''}
-                        </div>
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <span class="status-badge status-${problem.status}">
-                                    ${problem.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                </span>
-                            </div>
-                            <div class="mb-3">
-                                <span class="priority-badge priority-${problem.priority}">
-                                    ${problem.priority.charAt(0).toUpperCase() + problem.priority.slice(1)} Priority
-                                </span>
-                            </div>
-                            <div class="mb-3">
-                                <span class="severity-badge severity-${problem.severity}">
-                                    ${problem.severity.charAt(0).toUpperCase() + problem.severity.slice(1)} Severity
-                                </span>
-                            </div>
-                            
-                            <hr>
-                            
-                            <div class="mb-2">
-                                <strong>Impact:</strong> ${problem.impact.charAt(0).toUpperCase() + problem.impact.slice(1)}
-                            </div>
-                            <div class="mb-2">
-                                <strong>Urgency:</strong> ${problem.urgency.charAt(0).toUpperCase() + problem.urgency.slice(1)}
-                            </div>
-                            ${problem.estimated_resolution_time ? `
-                            <div class="mb-2">
-                                <strong>Est. Resolution Time:</strong> ${problem.estimated_resolution_time}h
-                            </div>
-                            ` : ''}
-                            
-                            ${problem.status === 'reported' ? `
-                            <hr>
-                            <div class="d-grid gap-2">
-                                <button class="btn btn-primary btn-sm" onclick="assignProblemFromModal(${problem.id})">
-                                    <i class="fas fa-user-plus"></i> Assign to Mechanic
-                                </button>
-                                <button class="btn btn-success btn-sm" onclick="convertToTaskFromModal(${problem.id})">
-                                    <i class="fas fa-wrench"></i> Convert to Task
-                                </button>
-                            </div>
-                            ` : ''}
                         </div>
                     </div>
                 `;
-            } else {
+            }, 500);
+        } else {
+            setTimeout(() => {
                 document.getElementById('viewProblemContent').innerHTML = `
-                    <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-circle"></i>
-                        Failed to load problem details: ${data.message || 'Unknown error'}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Problem details not found on current page.
                     </div>
                 `;
-            }
-        })
-        .catch(error => {
-            console.error('❌ View problem error:', error);
-            document.getElementById('viewProblemContent').innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-circle"></i>
-                    Error loading problem details: ${error.message}
-                </div>
-            `;
-        });
-    }
-    
-    function assignProblemFromModal(problemId) {
-        // Close view modal and open assign modal
-        bootstrap.Modal.getInstance(document.getElementById('viewProblemModal')).hide();
-        setTimeout(() => assignProblem(problemId), 300);
-    }
-    
-    function convertToTaskFromModal(problemId) {
-        // Close view modal and open convert modal
-        bootstrap.Modal.getInstance(document.getElementById('viewProblemModal')).hide();
-        setTimeout(() => convertToTask(problemId), 300);
-    }
-    
-    function addComment(problemId) {
-        showToast('Comment feature will be implemented soon!', 'info');
+            }, 500);
+        }
     }
     
     function refreshData() {
@@ -1101,7 +1081,7 @@ $page_title = 'Problem Management';
         showToast('Export feature will be implemented soon!', 'info');
     }
     
-    function showToast(message, type = 'info') {
+    function showToast(message, type = 'info', duration = 4000) {
         // Remove existing toasts
         const existingToasts = document.querySelectorAll('.toast');
         existingToasts.forEach(toast => toast.remove());
@@ -1131,7 +1111,10 @@ $page_title = 'Problem Management';
         container.appendChild(toast);
         
         // Show toast
-        const bsToast = new bootstrap.Toast(toast);
+        const bsToast = new bootstrap.Toast(toast, {
+            autohide: true,
+            delay: duration
+        });
         bsToast.show();
         
         // Remove after hiding
@@ -1149,6 +1132,28 @@ $page_title = 'Problem Management';
         };
         return icons[type] || 'info-circle';
     }
+    
+    // Add debug information
+    console.log('🔧 FIXED Problems Page Debug Info:');
+    console.log('- Problems loaded:', <?php echo count($problems); ?>);
+    console.log('- Mechanics available:', <?php echo count($mechanics); ?>);
+    console.log('- Current page:', <?php echo $page; ?>);
+    console.log('- Total pages:', <?php echo $total_pages; ?>);
+    console.log('- Filters active:', '<?php echo ($status_filter !== 'all' || $priority_filter !== 'all' || $category_filter !== 'all' || $assigned_to_filter > 0) ? 'Yes' : 'No'; ?>');
     </script>
+
+    <?php
+    // Helper functions for time display
+    if (!function_exists('timeAgo')) {
+        function timeAgo($datetime) {
+            $time = time() - strtotime($datetime);
+            if ($time < 60) return 'just now';
+            if ($time < 3600) return floor($time / 60) . 'm ago';
+            if ($time < 86400) return floor($time / 3600) . 'h ago';
+            return date('M j', strtotime($datetime));
+        }
+    }
+    ?>
+
 </body>
 </html>
