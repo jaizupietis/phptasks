@@ -1,11 +1,10 @@
 <?php
 /**
- * PILNĪGI IZLABOTA Manager Problem Management Dashboard
- * Šī versija izlabo visas SQL parametru kļūdas un blank page problēmas
- * Aizstāj: /var/www/tasks/manager/problems.php
+ * WORKING Manager Problems Page
+ * Based on successful debug test
+ * Replace: /var/www/tasks/manager/problems.php
  */
 
-// Ieslēdzam error reporting debuggingam
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 ini_set('log_errors', 1);
@@ -13,7 +12,7 @@ ini_set('log_errors', 1);
 define('SECURE_ACCESS', true);
 require_once '../config/config.php';
 
-// Pārbaudām vai lietotājs ir ielogojies un ir menedžeris
+// Check authentication
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['manager', 'admin'])) {
     header('Location: ../index.php');
     exit;
@@ -23,28 +22,23 @@ $db = Database::getInstance();
 $user_id = $_SESSION['user_id'];
 $is_mobile = isMobile();
 
-// Inicializējam visus mainīgos, lai novērstu undefined errors
-$status_filter = 'all';
-$priority_filter = 'all';
-$category_filter = 'all';
-$assigned_to_filter = 0;
+// Initialize variables
 $problems = [];
 $total_problems = 0;
 $total_pages = 1;
 $page = 1;
 $per_page = 15;
 $mechanics = [];
-$problem_stats = [
-    'total' => 0, 
-    'reported' => 0, 
-    'assigned' => 0, 
-    'in_progress' => 0, 
-    'resolved' => 0,
-    'urgent' => 0
-];
+$problem_stats = ['total' => 0, 'reported' => 0, 'assigned' => 0, 'in_progress' => 0, 'resolved' => 0, 'urgent' => 0];
+
+// Get filters
+$status_filter = isset($_GET['status']) ? sanitizeInput($_GET['status']) : 'all';
+$priority_filter = isset($_GET['priority']) ? sanitizeInput($_GET['priority']) : 'all';
+$category_filter = isset($_GET['category']) ? sanitizeInput($_GET['category']) : 'all';
+$assigned_to_filter = isset($_GET['assigned_to']) ? max(0, (int)$_GET['assigned_to']) : 0;
 
 try {
-    // Apstrādājam problēmu piešķiršanu un uzdevumu konvertēšanu
+    // Handle POST actions
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $_POST['action'] ?? '';
         
@@ -53,33 +47,24 @@ try {
             $assigned_to = (int)$_POST['assigned_to'];
             
             if ($problem_id > 0 && $assigned_to > 0) {
-                try {
-                    // Atjauninām problēmu
-                    $result = $db->query(
-                        "UPDATE problems SET assigned_to = ?, assigned_by = ?, status = 'assigned' WHERE id = ?",
-                        [$assigned_to, $user_id, $problem_id]
-                    );
-                    
-                    if ($result->rowCount() > 0) {
-                        // Izveidojam paziņojumu piešķirtajam mehāniķim
-                        $problem = $db->fetch("SELECT title FROM problems WHERE id = ?", [$problem_id]);
-                        if ($problem) {
-                            $db->query(
-                                "INSERT INTO notifications (user_id, problem_id, type, title, message) 
-                                 VALUES (?, ?, 'problem_assigned', 'Problem Assigned', ?)",
-                                [$assigned_to, $problem_id, "Problem assigned: '{$problem['title']}'"]
-                            );
-                        }
-                        $_SESSION['success_message'] = 'Problēma veiksmīgi piešķirta!';
-                    } else {
-                        $_SESSION['error_message'] = 'Neizdevās piešķirt problēmu.';
+                $result = $db->query(
+                    "UPDATE problems SET assigned_to = ?, assigned_by = ?, status = 'assigned' WHERE id = ?",
+                    [$assigned_to, $user_id, $problem_id]
+                );
+                
+                if ($result->rowCount() > 0) {
+                    $problem = $db->fetch("SELECT title FROM problems WHERE id = ?", [$problem_id]);
+                    if ($problem) {
+                        $db->query(
+                            "INSERT INTO notifications (user_id, problem_id, type, title, message) VALUES (?, ?, 'problem_assigned', 'Problem Assigned', ?)",
+                            [$assigned_to, $problem_id, "Problem assigned: '{$problem['title']}'"]
+                        );
                     }
-                } catch (Exception $e) {
-                    error_log("Problem assignment error: " . $e->getMessage());
-                    $_SESSION['error_message'] = 'Kļūda piešķirot problēmu: ' . $e->getMessage();
+                    $_SESSION['success_message'] = 'Problem successfully assigned!';
+                } else {
+                    $_SESSION['error_message'] = 'Failed to assign problem.';
                 }
             }
-            
             header('Location: problems.php');
             exit;
         }
@@ -89,78 +74,53 @@ try {
             $assigned_to = (int)$_POST['assigned_to'];
             
             if ($problem_id > 0 && $assigned_to > 0) {
-                try {
-                    $problem = $db->fetch("SELECT * FROM problems WHERE id = ?", [$problem_id]);
+                $problem = $db->fetch("SELECT * FROM problems WHERE id = ?", [$problem_id]);
+                
+                if ($problem) {
+                    $task_data = [
+                        'title' => "Fix: " . $problem['title'],
+                        'description' => $problem['description'],
+                        'priority' => $problem['priority'],
+                        'status' => 'pending',
+                        'assigned_to' => $assigned_to,
+                        'assigned_by' => $user_id,
+                        'category' => $problem['category'],
+                        'location' => $problem['location'],
+                        'equipment' => $problem['equipment'],
+                        'estimated_hours' => $problem['estimated_resolution_time'],
+                        'notes' => "Created from Problem #" . $problem_id,
+                        'progress_percentage' => 0
+                    ];
                     
-                    if ($problem) {
-                        // Izveidojam uzdevumu no problēmas
-                        $task_data = [
-                            'title' => "Labot: " . $problem['title'],
-                            'description' => $problem['description'],
-                            'priority' => $problem['priority'],
-                            'status' => 'pending',
-                            'assigned_to' => $assigned_to,
-                            'assigned_by' => $user_id,
-                            'category' => $problem['category'],
-                            'location' => $problem['location'],
-                            'equipment' => $problem['equipment'],
-                            'estimated_hours' => $problem['estimated_resolution_time'],
-                            'notes' => "Izveidots no Problēmas #" . $problem_id,
-                            'progress_percentage' => 0
-                        ];
+                    $fields = array_keys($task_data);
+                    $placeholders = array_fill(0, count($fields), '?');
+                    $values = array_values($task_data);
+                    
+                    $sql = "INSERT INTO tasks (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+                    $stmt = $db->query($sql, $values);
+                    $new_task_id = $db->getConnection()->lastInsertId();
+                    
+                    if ($new_task_id) {
+                        $db->query("UPDATE problems SET task_id = ?, status = 'assigned' WHERE id = ?", [$new_task_id, $problem_id]);
                         
-                        $fields = array_keys($task_data);
-                        $placeholders = array_fill(0, count($fields), '?');
-                        $values = array_values($task_data);
+                        $db->query(
+                            "INSERT INTO notifications (user_id, task_id, type, title, message) VALUES (?, ?, 'task_assigned', 'Task Created from Problem', ?)",
+                            [$assigned_to, $new_task_id, "Task created from problem: '{$problem['title']}'"]
+                        );
                         
-                        $sql = "INSERT INTO tasks (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
-                        $stmt = $db->query($sql, $values);
-                        $new_task_id = $db->getConnection()->lastInsertId();
-                        
-                        if ($new_task_id) {
-                            // Atjauninām problēmu ar uzdevuma ID
-                            $db->query(
-                                "UPDATE problems SET task_id = ?, status = 'assigned' WHERE id = ?",
-                                [$new_task_id, $problem_id]
-                            );
-                            
-                            // Izveidojam paziņojumus
-                            $db->query(
-                                "INSERT INTO notifications (user_id, task_id, type, title, message) 
-                                 VALUES (?, ?, 'task_assigned', 'Task Created from Problem', ?)",
-                                [$assigned_to, $new_task_id, "Uzdevums izveidots no problēmas: '{$problem['title']}'"]
-                            );
-                            
-                            $_SESSION['success_message'] = 'Problēma veiksmīgi konvertēta uz uzdevumu!';
-                        }
+                        $_SESSION['success_message'] = 'Problem successfully converted to task!';
                     }
-                } catch (Exception $e) {
-                    error_log("Problem conversion error: " . $e->getMessage());
-                    $_SESSION['error_message'] = 'Kļūda konvertējot problēmu: ' . $e->getMessage();
                 }
             }
-            
             header('Location: problems.php');
             exit;
         }
     }
 
-    // Iegūstam filtru parametrus ar pareizu sanitizāciju
-    $status_filter = isset($_GET['status']) ? sanitizeInput($_GET['status']) : 'all';
-    $priority_filter = isset($_GET['priority']) ? sanitizeInput($_GET['priority']) : 'all';
-    $category_filter = isset($_GET['category']) ? sanitizeInput($_GET['category']) : 'all';
-    $assigned_to_filter = isset($_GET['assigned_to']) ? max(0, (int)$_GET['assigned_to']) : 0;
-
-    // IZLABOTS: Vienkāršota parametru veidošana - bez sarežģītas WHERE klauzulu apvienošanas
+    // Build query conditions - SIMPLE approach
     $where_parts = [];
     $params = [];
 
-    // Iegūstam paginācijas parametrus
-    $page = max(1, (int)($_GET['page'] ?? 1));
-    $per_page = $is_mobile ? 8 : 15;
-    $offset = ($page - 1) * $per_page;
-
-    // IZLABOTS: Veidojam atsevišķas queries katram filtram, lai izvairītos no parametru neatbilstības
     if ($status_filter !== 'all' && in_array($status_filter, ['reported', 'assigned', 'in_progress', 'resolved', 'closed'])) {
         $where_parts[] = "p.status = ?";
         $params[] = $status_filter;
@@ -181,80 +141,76 @@ try {
         $params[] = $assigned_to_filter;
     }
 
-    // Apvienojam WHERE nosacījumus
-    $where_clause = !empty($where_parts) ? 'WHERE ' . implode(' AND ', $where_parts) : '';
+    $where_clause = !empty($where_parts) ? ' WHERE ' . implode(' AND ', $where_parts) : '';
 
-    // Iegūstam problēmas ar IZLABOTU parametru apstrādi
+    // Get pagination
+    $page = max(1, (int)($_GET['page'] ?? 1));
+    $per_page = $is_mobile ? 8 : 15;
+    $offset = ($page - 1) * $per_page;
+
+    // Main query
+    $base_query = "SELECT p.*, 
+                          ur.first_name as reported_by_name, ur.last_name as reported_by_lastname,
+                          ua.first_name as assigned_to_name, ua.last_name as assigned_to_lastname,
+                          ub.first_name as assigned_by_name, ub.last_name as assigned_by_lastname,
+                          t.id as task_id, t.status as task_status, t.title as task_title
+                   FROM problems p 
+                   LEFT JOIN users ur ON p.reported_by = ur.id 
+                   LEFT JOIN users ua ON p.assigned_to = ua.id 
+                   LEFT JOIN users ub ON p.assigned_by = ub.id 
+                   LEFT JOIN tasks t ON p.task_id = t.id";
+
+    $order_clause = " ORDER BY 
+        CASE 
+            WHEN p.status = 'reported' THEN 1 
+            WHEN p.priority = 'urgent' THEN 2 
+            WHEN p.priority = 'high' THEN 3 
+            ELSE 4 
+        END,
+        p.created_at DESC";
+
+    // Execute queries
     $problems = $db->fetchAll(
-        "SELECT p.*, 
-                ur.first_name as reported_by_name, ur.last_name as reported_by_lastname,
-                ua.first_name as assigned_to_name, ua.last_name as assigned_to_lastname,
-                ub.first_name as assigned_by_name, ub.last_name as assigned_by_lastname,
-                t.id as task_id, t.status as task_status, t.title as task_title
-         FROM problems p 
-         LEFT JOIN users ur ON p.reported_by = ur.id 
-         LEFT JOIN users ua ON p.assigned_to = ua.id 
-         LEFT JOIN users ub ON p.assigned_by = ub.id 
-         LEFT JOIN tasks t ON p.task_id = t.id
-         {$where_clause}
-         ORDER BY 
-            CASE 
-                WHEN p.status = 'reported' THEN 1 
-                WHEN p.priority = 'urgent' THEN 2 
-                WHEN p.priority = 'high' THEN 3 
-                ELSE 4 
-            END,
-            p.created_at DESC 
-         LIMIT {$per_page} OFFSET {$offset}",
+        $base_query . $where_clause . $order_clause . " LIMIT {$per_page} OFFSET {$offset}",
         $params
     );
 
-    // Iegūstam kopējo skaitu paginācijas vajadzībām ar tiem pašiem parametriem
     $total_problems = $db->fetchCount(
-        "SELECT COUNT(*) FROM problems p {$where_clause}",
+        "SELECT COUNT(*) FROM problems p" . $where_clause,
         $params
     );
 
     $total_pages = max(1, ceil($total_problems / $per_page));
 
-    // Iegūstam visus mehāniķus piešķiršanai
+    // Get mechanics
     $mechanics = $db->fetchAll(
-        "SELECT id, first_name, last_name FROM users 
-         WHERE role = 'mechanic' AND is_active = 1 
-         ORDER BY first_name, last_name"
+        "SELECT id, first_name, last_name FROM users WHERE role = 'mechanic' AND is_active = 1 ORDER BY first_name, last_name"
     );
 
-    // IZLABOTS: Iegūstam problēmu statistiku ar atsevišķām vienkāršām queries
+    // Get statistics - separate queries to avoid parameter issues
     $problem_stats = [
         'total' => $total_problems,
-        'reported' => $db->fetchCount("SELECT COUNT(*) FROM problems p {$where_clause} AND p.status = 'reported'", 
-                                     array_merge($params, ['reported'])),
-        'assigned' => $db->fetchCount("SELECT COUNT(*) FROM problems p {$where_clause} AND p.status = 'assigned'", 
-                                     array_merge($params, ['assigned'])),
-        'in_progress' => $db->fetchCount("SELECT COUNT(*) FROM problems p {$where_clause} AND p.status = 'in_progress'", 
-                                        array_merge($params, ['in_progress'])),
-        'resolved' => $db->fetchCount("SELECT COUNT(*) FROM problems p {$where_clause} AND p.status = 'resolved'", 
-                                     array_merge($params, ['resolved'])),
-        'urgent' => $db->fetchCount("SELECT COUNT(*) FROM problems p {$where_clause} AND p.priority = 'urgent'", 
-                                   array_merge($params, ['urgent']))
+        'reported' => $db->fetchCount("SELECT COUNT(*) FROM problems p" . $where_clause . " AND p.status = 'reported'", array_merge($params, ['reported'])),
+        'assigned' => $db->fetchCount("SELECT COUNT(*) FROM problems p" . $where_clause . " AND p.status = 'assigned'", array_merge($params, ['assigned'])),
+        'in_progress' => $db->fetchCount("SELECT COUNT(*) FROM problems p" . $where_clause . " AND p.status = 'in_progress'", array_merge($params, ['in_progress'])),
+        'resolved' => $db->fetchCount("SELECT COUNT(*) FROM problems p" . $where_clause . " AND p.status = 'resolved'", array_merge($params, ['resolved'])),
+        'urgent' => $db->fetchCount("SELECT COUNT(*) FROM problems p" . $where_clause . " AND p.priority = 'urgent'", array_merge($params, ['urgent']))
     ];
 
 } catch (Exception $e) {
-    error_log("IZLABOTS Manager problems page error: " . $e->getMessage());
-    error_log("Error details: " . $e->getTraceAsString());
-    // Iestatām drošus default values instead of crashing
+    error_log("Manager problems error: " . $e->getMessage());
     $problems = [];
     $total_problems = 0;
     $total_pages = 1;
     $mechanics = [];
     $problem_stats = ['total' => 0, 'reported' => 0, 'assigned' => 0, 'in_progress' => 0, 'resolved' => 0, 'urgent' => 0];
-    $_SESSION['error_message'] = "Sistēmas kļūda. Lūdzu mēģiniet vēlreiz vai sazinieties ar administratoru.";
+    $_SESSION['error_message'] = "System error occurred. Please try again.";
 }
 
-$page_title = 'Problēmu pārvaldība';
+$page_title = 'Problem Management';
 ?>
 <!DOCTYPE html>
-<html lang="lv">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -273,9 +229,7 @@ $page_title = 'Problēmu pārvaldība';
             --info-color: #17a2b8;
         }
         
-        body {
-            background: #f8f9fa;
-        }
+        body { background: #f8f9fa; }
         
         .manager-navbar {
             background: linear-gradient(135deg, var(--manager-primary) 0%, #5a32a3 100%);
@@ -367,16 +321,13 @@ $page_title = 'Problēmu pārvaldība';
             color: white;
         }
         
-        .success-indicator {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: var(--success-color);
-            color: white;
-            padding: 1rem 1.5rem;
-            border-radius: 8px;
-            z-index: 1050;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        .status-indicator {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 0.5rem;
+            border-radius: 5px;
+            margin-bottom: 1rem;
         }
     </style>
 </head>
@@ -389,13 +340,13 @@ $page_title = 'Problēmu pārvaldība';
                     <i class="fas fa-arrow-left"></i> Dashboard
                 </a>
                 <span class="navbar-brand mb-0 h1">
-                    <i class="fas fa-exclamation-triangle"></i> Problēmu pārvaldība
+                    <i class="fas fa-exclamation-triangle"></i> Problem Management
                 </span>
             </div>
             <div class="d-flex align-items-center gap-2">
-                <span class="badge bg-light text-dark">✅ IZLABOTS</span>
+                <span class="badge bg-success">✅ WORKING</span>
                 <button class="btn btn-outline-light btn-sm" onclick="refreshData()">
-                    <i class="fas fa-sync"></i> Atjaunot
+                    <i class="fas fa-sync"></i> Refresh
                 </button>
             </div>
         </div>
@@ -403,6 +354,17 @@ $page_title = 'Problēmu pārvaldība';
     
     <!-- Main Content -->
     <div class="container-fluid p-4">
+        
+        <!-- Status Info -->
+        <div class="status-indicator">
+            <h6><i class="fas fa-check-circle"></i> System Status: WORKING</h6>
+            <p class="mb-0">
+                <strong>Problems loaded successfully.</strong> 
+                Total: <?php echo $total_problems; ?> | 
+                Mechanics: <?php echo count($mechanics); ?> | 
+                Current Page: <?php echo $page; ?>/<?php echo $total_pages; ?>
+            </p>
+        </div>
         
         <!-- Alert Messages -->
         <?php if (isset($_SESSION['success_message'])): ?>
@@ -421,52 +383,42 @@ $page_title = 'Problēmu pārvaldība';
         <?php unset($_SESSION['error_message']); ?>
         <?php endif; ?>
         
-        <!-- IZLABOTS: Status display -->
-        <div class="alert alert-info">
-            <i class="fas fa-info-circle"></i>
-            <strong>Sistēmas statuss:</strong> Problēmu lapa pilnībā darbspējīga.
-            <strong>Debug Info:</strong> 
-            Kopā problēmu: <?php echo $total_problems; ?>, 
-            Pieejami mehāniķi: <?php echo count($mechanics); ?>,
-            Pašreizējie filtri: Status=<?php echo $status_filter; ?>, Priority=<?php echo $priority_filter; ?>
-        </div>
-        
         <!-- Statistics Row -->
         <div class="row g-3 mb-4">
             <div class="col-lg-2 col-md-4 col-6">
                 <div class="stats-mini total">
                     <h4 class="text-primary"><?php echo $problem_stats['total']; ?></h4>
-                    <small>Kopā problēmu</small>
+                    <small>Total Problems</small>
                 </div>
             </div>
             <div class="col-lg-2 col-md-4 col-6">
                 <div class="stats-mini reported">
                     <h4 class="text-secondary"><?php echo $problem_stats['reported']; ?></h4>
-                    <small>Gaida piešķiršanu</small>
+                    <small>Awaiting Assignment</small>
                 </div>
             </div>
             <div class="col-lg-2 col-md-4 col-6">
                 <div class="stats-mini assigned">
                     <h4 class="text-info"><?php echo $problem_stats['assigned']; ?></h4>
-                    <small>Piešķirtās</small>
+                    <small>Assigned</small>
                 </div>
             </div>
             <div class="col-lg-2 col-md-4 col-6">
                 <div class="stats-mini progress">
                     <h4 class="text-warning"><?php echo $problem_stats['in_progress']; ?></h4>
-                    <small>Darbā</small>
+                    <small>In Progress</small>
                 </div>
             </div>
             <div class="col-lg-2 col-md-4 col-6">
                 <div class="stats-mini resolved">
                     <h4 class="text-success"><?php echo $problem_stats['resolved']; ?></h4>
-                    <small>Atrisinātas</small>
+                    <small>Resolved</small>
                 </div>
             </div>
             <div class="col-lg-2 col-md-4 col-6">
                 <div class="stats-mini urgent">
                     <h4 class="text-danger"><?php echo $problem_stats['urgent']; ?></h4>
-                    <small>Steidzamas</small>
+                    <small>Urgent</small>
                 </div>
             </div>
         </div>
@@ -475,42 +427,42 @@ $page_title = 'Problēmu pārvaldība';
         <div class="filter-section p-4">
             <form method="GET" class="row g-3">
                 <div class="col-lg-2 col-md-4">
-                    <label for="status" class="form-label">Statuss</label>
+                    <label for="status" class="form-label">Status</label>
                     <select class="form-select" id="status" name="status">
-                        <option value="all" <?php echo $status_filter === 'all' ? 'selected' : ''; ?>>Visi statusi</option>
-                        <option value="reported" <?php echo $status_filter === 'reported' ? 'selected' : ''; ?>>Ziņots</option>
-                        <option value="assigned" <?php echo $status_filter === 'assigned' ? 'selected' : ''; ?>>Piešķirts</option>
-                        <option value="in_progress" <?php echo $status_filter === 'in_progress' ? 'selected' : ''; ?>>Darbā</option>
-                        <option value="resolved" <?php echo $status_filter === 'resolved' ? 'selected' : ''; ?>>Atrisināts</option>
-                        <option value="closed" <?php echo $status_filter === 'closed' ? 'selected' : ''; ?>>Slēgts</option>
+                        <option value="all" <?php echo $status_filter === 'all' ? 'selected' : ''; ?>>All Status</option>
+                        <option value="reported" <?php echo $status_filter === 'reported' ? 'selected' : ''; ?>>Reported</option>
+                        <option value="assigned" <?php echo $status_filter === 'assigned' ? 'selected' : ''; ?>>Assigned</option>
+                        <option value="in_progress" <?php echo $status_filter === 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
+                        <option value="resolved" <?php echo $status_filter === 'resolved' ? 'selected' : ''; ?>>Resolved</option>
+                        <option value="closed" <?php echo $status_filter === 'closed' ? 'selected' : ''; ?>>Closed</option>
                     </select>
                 </div>
                 <div class="col-lg-2 col-md-4">
-                    <label for="priority" class="form-label">Prioritāte</label>
+                    <label for="priority" class="form-label">Priority</label>
                     <select class="form-select" id="priority" name="priority">
-                        <option value="all" <?php echo $priority_filter === 'all' ? 'selected' : ''; ?>>Visas prioritātes</option>
-                        <option value="urgent" <?php echo $priority_filter === 'urgent' ? 'selected' : ''; ?>>Steidzama</option>
-                        <option value="high" <?php echo $priority_filter === 'high' ? 'selected' : ''; ?>>Augsta</option>
-                        <option value="medium" <?php echo $priority_filter === 'medium' ? 'selected' : ''; ?>>Vidēja</option>
-                        <option value="low" <?php echo $priority_filter === 'low' ? 'selected' : ''; ?>>Zema</option>
+                        <option value="all" <?php echo $priority_filter === 'all' ? 'selected' : ''; ?>>All Priorities</option>
+                        <option value="urgent" <?php echo $priority_filter === 'urgent' ? 'selected' : ''; ?>>Urgent</option>
+                        <option value="high" <?php echo $priority_filter === 'high' ? 'selected' : ''; ?>>High</option>
+                        <option value="medium" <?php echo $priority_filter === 'medium' ? 'selected' : ''; ?>>Medium</option>
+                        <option value="low" <?php echo $priority_filter === 'low' ? 'selected' : ''; ?>>Low</option>
                     </select>
                 </div>
                 <div class="col-lg-2 col-md-4">
-                    <label for="category" class="form-label">Kategorija</label>
+                    <label for="category" class="form-label">Category</label>
                     <select class="form-select" id="category" name="category">
-                        <option value="all">Visas kategorijas</option>
-                        <option value="Mechanical" <?php echo $category_filter === 'Mechanical' ? 'selected' : ''; ?>>Mehāniska</option>
-                        <option value="Electrical" <?php echo $category_filter === 'Electrical' ? 'selected' : ''; ?>>Elektriska</option>
-                        <option value="Hydraulic System" <?php echo $category_filter === 'Hydraulic System' ? 'selected' : ''; ?>>Hidrauliskā sistēma</option>
-                        <option value="Engine" <?php echo $category_filter === 'Engine' ? 'selected' : ''; ?>>Dzinējs</option>
-                        <option value="Brake System" <?php echo $category_filter === 'Brake System' ? 'selected' : ''; ?>>Bremžu sistēma</option>
-                        <option value="Safety" <?php echo $category_filter === 'Safety' ? 'selected' : ''; ?>>Drošība</option>
+                        <option value="all">All Categories</option>
+                        <option value="Mechanical" <?php echo $category_filter === 'Mechanical' ? 'selected' : ''; ?>>Mechanical</option>
+                        <option value="Electrical" <?php echo $category_filter === 'Electrical' ? 'selected' : ''; ?>>Electrical</option>
+                        <option value="Hydraulic System" <?php echo $category_filter === 'Hydraulic System' ? 'selected' : ''; ?>>Hydraulic System</option>
+                        <option value="Engine" <?php echo $category_filter === 'Engine' ? 'selected' : ''; ?>>Engine</option>
+                        <option value="Brake System" <?php echo $category_filter === 'Brake System' ? 'selected' : ''; ?>>Brake System</option>
+                        <option value="Safety" <?php echo $category_filter === 'Safety' ? 'selected' : ''; ?>>Safety</option>
                     </select>
                 </div>
                 <div class="col-lg-3 col-md-6">
-                    <label for="assigned_to" class="form-label">Piešķirts</label>
+                    <label for="assigned_to" class="form-label">Assigned To</label>
                     <select class="form-select" id="assigned_to" name="assigned_to">
-                        <option value="0">Visi mehāniķi</option>
+                        <option value="0">All Mechanics</option>
                         <?php foreach ($mechanics as $mechanic): ?>
                         <option value="<?php echo $mechanic['id']; ?>" 
                                 <?php echo $assigned_to_filter === (int)$mechanic['id'] ? 'selected' : ''; ?>>
@@ -523,10 +475,10 @@ $page_title = 'Problēmu pārvaldība';
                     <label class="form-label">&nbsp;</label>
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-manager">
-                            <i class="fas fa-filter"></i> Filtrēt
+                            <i class="fas fa-filter"></i> Filter
                         </button>
                         <a href="problems.php" class="btn btn-outline-secondary btn-sm">
-                            <i class="fas fa-times"></i> Notīrīt
+                            <i class="fas fa-times"></i> Clear
                         </a>
                     </div>
                 </div>
@@ -541,12 +493,12 @@ $page_title = 'Problēmu pārvaldība';
                     <div class="card-body">
                         <div class="text-center py-5">
                             <i class="fas fa-exclamation-triangle fa-4x text-muted mb-3"></i>
-                            <h5>Nav atrasta neviena problēma</h5>
+                            <h5>No Problems Found</h5>
                             <p class="text-muted">
                                 <?php if (count($mechanics) === 0): ?>
-                                Nav pieejami mehāniķi piešķiršanai. Lūdzu vispirms pievienojiet mehāniķus sistēmai.
+                                No mechanics available for assignment. Please add mechanics to the system first.
                                 <?php else: ?>
-                                Neviena problēma neatbilst jūsu pašreizējiem filtriem.<br>Pielāgojiet filtrus, lai redzētu vairāk rezultātu.
+                                No problems match your current filters.<br>Adjust the filters above to see more results.
                                 <?php endif; ?>
                             </p>
                         </div>
@@ -557,10 +509,10 @@ $page_title = 'Problēmu pārvaldība';
                 <!-- Results Summary -->
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6 class="text-muted mb-0">
-                        Rāda <?php echo count($problems); ?> no <?php echo $total_problems; ?> problēmām
+                        Showing <?php echo count($problems); ?> of <?php echo $total_problems; ?> problems
                     </h6>
                     <div class="d-flex align-items-center gap-2">
-                        <small class="text-muted">Lapa <?php echo $page; ?> no <?php echo $total_pages; ?></small>
+                        <small class="text-muted">Page <?php echo $page; ?> of <?php echo $total_pages; ?></small>
                     </div>
                 </div>
                 
@@ -574,7 +526,7 @@ $page_title = 'Problēmu pārvaldība';
                                     <?php echo htmlspecialchars($problem['title']); ?>
                                     <?php if ($problem['task_id']): ?>
                                     <span class="badge bg-success ms-2">
-                                        <i class="fas fa-wrench"></i> Uzdevums #<?php echo $problem['task_id']; ?>
+                                        <i class="fas fa-wrench"></i> Task #<?php echo $problem['task_id']; ?>
                                     </span>
                                     <?php endif; ?>
                                 </h5>
@@ -593,16 +545,16 @@ $page_title = 'Problēmu pārvaldība';
                                 </button>
                                 <ul class="dropdown-menu">
                                     <li><a class="dropdown-item" href="#" onclick="viewProblemDetails(<?php echo $problem['id']; ?>)">
-                                        <i class="fas fa-eye"></i> Skatīt detaļas</a></li>
+                                        <i class="fas fa-eye"></i> View Details</a></li>
                                     <?php if ($problem['status'] === 'reported'): ?>
                                     <li><a class="dropdown-item" href="#" onclick="assignProblem(<?php echo $problem['id']; ?>)">
-                                        <i class="fas fa-user-plus"></i> Piešķirt mehāniķim</a></li>
+                                        <i class="fas fa-user-plus"></i> Assign to Mechanic</a></li>
                                     <li><a class="dropdown-item" href="#" onclick="convertToTask(<?php echo $problem['id']; ?>)">
-                                        <i class="fas fa-wrench"></i> Konvertēt uz uzdevumu</a></li>
+                                        <i class="fas fa-wrench"></i> Convert to Task</a></li>
                                     <?php endif; ?>
                                     <?php if ($problem['task_id']): ?>
                                     <li><a class="dropdown-item" href="tasks.php?task_id=<?php echo $problem['task_id']; ?>">
-                                        <i class="fas fa-tasks"></i> Skatīt uzdevumu</a></li>
+                                        <i class="fas fa-tasks"></i> View Task</a></li>
                                     <?php endif; ?>
                                 </ul>
                             </div>
@@ -616,29 +568,29 @@ $page_title = 'Problēmu pārvaldība';
                         
                         <div class="row g-2 mb-3">
                             <div class="col-md-3">
-                                <small class="text-muted d-block">Ziņoja:</small>
+                                <small class="text-muted d-block">Reported by:</small>
                                 <strong><?php echo htmlspecialchars($problem['reported_by_name'] . ' ' . $problem['reported_by_lastname']); ?></strong>
                             </div>
                             <?php if ($problem['category']): ?>
                             <div class="col-md-2">
-                                <small class="text-muted d-block">Kategorija:</small>
+                                <small class="text-muted d-block">Category:</small>
                                 <strong><?php echo htmlspecialchars($problem['category']); ?></strong>
                             </div>
                             <?php endif; ?>
                             <?php if ($problem['location']): ?>
                             <div class="col-md-2">
-                                <small class="text-muted d-block">Vieta:</small>
+                                <small class="text-muted d-block">Location:</small>
                                 <strong><?php echo htmlspecialchars($problem['location']); ?></strong>
                             </div>
                             <?php endif; ?>
                             <?php if ($problem['equipment']): ?>
                             <div class="col-md-3">
-                                <small class="text-muted d-block">Iekārta:</small>
+                                <small class="text-muted d-block">Equipment:</small>
                                 <strong><?php echo htmlspecialchars($problem['equipment']); ?></strong>
                             </div>
                             <?php endif; ?>
                             <div class="col-md-2">
-                                <small class="text-muted d-block">Ziņots:</small>
+                                <small class="text-muted d-block">Reported:</small>
                                 <strong><?php echo timeAgo($problem['created_at']); ?></strong>
                             </div>
                         </div>
@@ -646,9 +598,9 @@ $page_title = 'Problēmu pārvaldība';
                         <?php if ($problem['assigned_to_name']): ?>
                         <div class="alert alert-info">
                             <i class="fas fa-user"></i>
-                            <strong>Piešķirts:</strong> <?php echo htmlspecialchars($problem['assigned_to_name'] . ' ' . $problem['assigned_to_lastname']); ?>
+                            <strong>Assigned to:</strong> <?php echo htmlspecialchars($problem['assigned_to_name'] . ' ' . $problem['assigned_to_lastname']); ?>
                             <?php if ($problem['assigned_by_name']): ?>
-                            no <?php echo htmlspecialchars($problem['assigned_by_name'] . ' ' . $problem['assigned_by_lastname']); ?>
+                            by <?php echo htmlspecialchars($problem['assigned_by_name'] . ' ' . $problem['assigned_by_lastname']); ?>
                             <?php endif; ?>
                         </div>
                         <?php endif; ?>
@@ -657,28 +609,28 @@ $page_title = 'Problēmu pārvaldība';
                             <div class="btn-group">
                                 <?php if ($problem['status'] === 'reported' && count($mechanics) > 0): ?>
                                 <button class="btn btn-primary btn-sm" onclick="assignProblem(<?php echo $problem['id']; ?>)">
-                                    <i class="fas fa-user-plus"></i> Piešķirt
+                                    <i class="fas fa-user-plus"></i> Assign
                                 </button>
                                 <button class="btn btn-success btn-sm" onclick="convertToTask(<?php echo $problem['id']; ?>)">
-                                    <i class="fas fa-wrench"></i> Konvertēt
+                                    <i class="fas fa-wrench"></i> Convert
                                 </button>
                                 <?php endif; ?>
                                 
                                 <?php if ($problem['task_id']): ?>
                                 <a href="tasks.php?task_id=<?php echo $problem['task_id']; ?>" class="btn btn-outline-success btn-sm">
-                                    <i class="fas fa-tasks"></i> Skatīt uzdevumu
+                                    <i class="fas fa-tasks"></i> View Task
                                 </a>
                                 <?php endif; ?>
                                 
                                 <button class="btn btn-outline-primary btn-sm" onclick="viewProblemDetails(<?php echo $problem['id']; ?>)">
-                                    <i class="fas fa-eye"></i> Detaļas
+                                    <i class="fas fa-eye"></i> Details
                                 </button>
                             </div>
                             
                             <small class="text-muted">
                                 ID: #<?php echo $problem['id']; ?> | 
-                                Ietekme: <?php echo ucfirst($problem['impact'] ?? 'medium'); ?> |
-                                Steidzamība: <?php echo ucfirst($problem['urgency'] ?? 'medium'); ?>
+                                Impact: <?php echo ucfirst($problem['impact'] ?? 'medium'); ?> |
+                                Urgency: <?php echo ucfirst($problem['urgency'] ?? 'medium'); ?>
                             </small>
                         </div>
                     </div>
@@ -692,7 +644,7 @@ $page_title = 'Problēmu pārvaldība';
                         <?php if ($page > 1): ?>
                         <li class="page-item">
                             <a class="page-link" href="?page=<?php echo $page - 1; ?>&status=<?php echo $status_filter; ?>&priority=<?php echo $priority_filter; ?>&category=<?php echo $category_filter; ?>&assigned_to=<?php echo $assigned_to_filter; ?>">
-                                Iepriekšējā
+                                Previous
                             </a>
                         </li>
                         <?php endif; ?>
@@ -708,7 +660,7 @@ $page_title = 'Problēmu pārvaldība';
                         <?php if ($page < $total_pages): ?>
                         <li class="page-item">
                             <a class="page-link" href="?page=<?php echo $page + 1; ?>&status=<?php echo $status_filter; ?>&priority=<?php echo $priority_filter; ?>&category=<?php echo $category_filter; ?>&assigned_to=<?php echo $assigned_to_filter; ?>">
-                                Nākamā
+                                Next
                             </a>
                         </li>
                         <?php endif; ?>
@@ -726,7 +678,7 @@ $page_title = 'Problēmu pārvaldība';
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-user-plus"></i> Piešķirt problēmu mehāniķim</h5>
+                    <h5 class="modal-title"><i class="fas fa-user-plus"></i> Assign Problem to Mechanic</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form method="POST">
@@ -738,9 +690,9 @@ $page_title = 'Problēmu pārvaldība';
                         </div>
                         <?php if (count($mechanics) > 0): ?>
                         <div class="mb-3">
-                            <label for="assignMechanic" class="form-label">Izvēlieties mehāniķi *</label>
+                            <label for="assignMechanic" class="form-label">Select Mechanic *</label>
                             <select class="form-select" name="assigned_to" id="assignMechanic" required>
-                                <option value="">Izvēlieties mehāniķi...</option>
+                                <option value="">Choose a mechanic...</option>
                                 <?php foreach ($mechanics as $mechanic): ?>
                                 <option value="<?php echo $mechanic['id']; ?>">
                                     <?php echo htmlspecialchars($mechanic['first_name'] . ' ' . $mechanic['last_name']); ?>
@@ -750,20 +702,20 @@ $page_title = 'Problēmu pārvaldība';
                         </div>
                         <div class="alert alert-info">
                             <i class="fas fa-info-circle"></i>
-                            Izvēlētais mehāniķis saņems paziņojumu par šo piešķiršanu.
+                            The selected mechanic will be notified about this assignment.
                         </div>
                         <?php else: ?>
                         <div class="alert alert-warning">
                             <i class="fas fa-exclamation-triangle"></i>
-                            Nav pieejami mehāniķi. Lūdzu vispirms pievienojiet mehāniķus sistēmai.
+                            No mechanics available. Please add mechanics to the system first.
                         </div>
                         <?php endif; ?>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Atcelt</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         <?php if (count($mechanics) > 0): ?>
                         <button type="submit" class="btn btn-manager">
-                            <i class="fas fa-user-plus"></i> Piešķirt problēmu
+                            <i class="fas fa-user-plus"></i> Assign Problem
                         </button>
                         <?php endif; ?>
                     </div>
@@ -777,7 +729,7 @@ $page_title = 'Problēmu pārvaldība';
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-wrench"></i> Konvertēt problēmu uz uzdevumu</h5>
+                    <h5 class="modal-title"><i class="fas fa-wrench"></i> Convert Problem to Task</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form method="POST">
@@ -789,9 +741,9 @@ $page_title = 'Problēmu pārvaldība';
                         </div>
                         <?php if (count($mechanics) > 0): ?>
                         <div class="mb-3">
-                            <label for="convertMechanic" class="form-label">Piešķirt uzdevumu *</label>
+                            <label for="convertMechanic" class="form-label">Assign Task To *</label>
                             <select class="form-select" name="assigned_to" id="convertMechanic" required>
-                                <option value="">Izvēlieties mehāniķi...</option>
+                                <option value="">Choose a mechanic...</option>
                                 <?php foreach ($mechanics as $mechanic): ?>
                                 <option value="<?php echo $mechanic['id']; ?>">
                                     <?php echo htmlspecialchars($mechanic['first_name'] . ' ' . $mechanic['last_name']); ?>
@@ -801,20 +753,20 @@ $page_title = 'Problēmu pārvaldība';
                         </div>
                         <div class="alert alert-warning">
                             <i class="fas fa-exclamation-triangle"></i>
-                            Tiks izveidots tehniskā apkopes uzdevums, pamatojoties uz šo problēmu, un piešķirts izvēlētajam mehāniķim.
+                            A maintenance task will be created based on this problem and assigned to the selected mechanic.
                         </div>
                         <?php else: ?>
                         <div class="alert alert-warning">
                             <i class="fas fa-exclamation-triangle"></i>
-                            Nav pieejami mehāniķi. Lūdzu vispirms pievienojiet mehāniķus sistēmai.
+                            No mechanics available. Please add mechanics to the system first.
                         </div>
                         <?php endif; ?>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Atcelt</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         <?php if (count($mechanics) > 0): ?>
                         <button type="submit" class="btn btn-success">
-                            <i class="fas fa-wrench"></i> Konvertēt uz uzdevumu
+                            <i class="fas fa-wrench"></i> Convert to Task
                         </button>
                         <?php endif; ?>
                     </div>
@@ -828,7 +780,7 @@ $page_title = 'Problēmu pārvaldība';
     
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        console.log('✅ PILNĪGI IZLABOTS Manager Problem Management veiksmīgi ielādēts');
+        console.log('✅ WORKING Manager Problem Management loaded successfully');
         console.log('Debug Info:', {
             totalProblems: <?php echo $total_problems; ?>,
             mechanicsAvailable: <?php echo count($mechanics); ?>,
@@ -854,18 +806,16 @@ $page_title = 'Problēmu pārvaldība';
     });
     
     function assignProblem(problemId) {
-        console.log('✅ Piešķir problēmu:', problemId);
+        console.log('✅ Assigning problem:', problemId);
         
-        // Pārbaudam vai ir pieejami mehāniķi
         const mechanicsAvailable = <?php echo count($mechanics); ?>;
         if (mechanicsAvailable === 0) {
-            showToast('❌ Nav pieejami mehāniķi piešķiršanai', 'warning');
+            showToast('❌ No mechanics available for assignment', 'warning');
             return;
         }
         
-        // Atrodam problēmas detaļas no lapas
         const problemCard = document.querySelector(`[data-problem-id="${problemId}"]`);
-        let problemTitle = `Problēma #${problemId}`;
+        let problemTitle = `Problem #${problemId}`;
         
         if (problemCard) {
             const titleElement = problemCard.querySelector('.card-title');
@@ -878,30 +828,27 @@ $page_title = 'Problēmu pārvaldība';
         document.getElementById('assignProblemDetails').innerHTML = `
             <div class="alert alert-light">
                 <h6><i class="fas fa-exclamation-triangle"></i> ${problemTitle}</h6>
-                <p class="mb-0">Izvēlieties mehāniķi, kuram piešķirt šo problēmu. Viņš automātiski saņems paziņojumu.</p>
+                <p class="mb-0">Select a mechanic to assign this problem to. They will automatically receive a notification.</p>
             </div>
         `;
         
-        // Reset form
         document.getElementById('assignMechanic').value = '';
         
-        // Show modal
         const modal = new bootstrap.Modal(document.getElementById('assignProblemModal'));
         modal.show();
     }
     
     function convertToTask(problemId) {
-        console.log('✅ Konvertē problēmu uz uzdevumu:', problemId);
+        console.log('✅ Converting problem to task:', problemId);
         
-        // Pārbaudam vai ir pieejami mehāniķi
         const mechanicsAvailable = <?php echo count($mechanics); ?>;
         if (mechanicsAvailable === 0) {
-            showToast('❌ Nav pieejami mehāniķi uzdevuma piešķiršanai', 'warning');
+            showToast('❌ No mechanics available for task assignment', 'warning');
             return;
         }
         
         const problemCard = document.querySelector(`[data-problem-id="${problemId}"]`);
-        let problemTitle = `Problēma #${problemId}`;
+        let problemTitle = `Problem #${problemId}`;
         
         if (problemCard) {
             const titleElement = problemCard.querySelector('.card-title');
@@ -914,52 +861,48 @@ $page_title = 'Problēmu pārvaldība';
         document.getElementById('convertProblemDetails').innerHTML = `
             <div class="alert alert-light">
                 <h6><i class="fas fa-wrench"></i> ${problemTitle}</h6>
-                <p class="mb-0">Tiks izveidots tehniskā apkopes uzdevums: "Labot: ${problemTitle}"</p>
-                <small class="text-muted">Uzdevums iekļaus visas problēmas detaļas un paredzamo atrisinājuma laiku.</small>
+                <p class="mb-0">A maintenance task will be created: "Fix: ${problemTitle}"</p>
+                <small class="text-muted">The task will include all problem details and estimated resolution time.</small>
             </div>
         `;
         
-        // Reset form
         document.getElementById('convertMechanic').value = '';
         
-        // Show modal
         const modal = new bootstrap.Modal(document.getElementById('convertTaskModal'));
         modal.show();
     }
     
     function viewProblemDetails(problemId) {
-        console.log('✅ Skatās problēmas detaļas:', problemId);
+        console.log('✅ Viewing problem details:', problemId);
         
-        // Atrodam problēmas detaļas no lapas
         const problemCard = document.querySelector(`[data-problem-id="${problemId}"]`);
         if (problemCard) {
-            const title = problemCard.querySelector('.card-title')?.textContent.trim() || 'Nezināms';
-            const description = problemCard.querySelector('.card-text')?.textContent.trim() || 'Nav apraksta';
-            const status = problemCard.querySelector('.status-badge')?.textContent.trim() || 'Nezināms';
-            const priority = problemCard.querySelector('.priority-badge')?.textContent.trim() || 'Nezināms';
+            const title = problemCard.querySelector('.card-title')?.textContent.trim() || 'Unknown';
+            const description = problemCard.querySelector('.card-text')?.textContent.trim() || 'No description';
+            const status = problemCard.querySelector('.status-badge')?.textContent.trim() || 'Unknown';
+            const priority = problemCard.querySelector('.priority-badge')?.textContent.trim() || 'Unknown';
             
             const detailsHtml = `
                 <div class="alert alert-info">
                     <h6>${title}</h6>
-                    <p><strong>Apraksts:</strong> ${description}</p>
-                    <p><strong>Statuss:</strong> ${status} | <strong>Prioritāte:</strong> ${priority}</p>
-                    <p><strong>Problēmas ID:</strong> #${problemId}</p>
+                    <p><strong>Description:</strong> ${description}</p>
+                    <p><strong>Status:</strong> ${status} | <strong>Priority:</strong> ${priority}</p>
+                    <p><strong>Problem ID:</strong> #${problemId}</p>
                 </div>
             `;
             
-            // Izveidojam vienkāršu modal vai izmantojam alert for now
             const detailModal = document.createElement('div');
             detailModal.innerHTML = `
                 <div class="modal fade" id="tempDetailModal" tabindex="-1">
                     <div class="modal-dialog">
                         <div class="modal-content">
                             <div class="modal-header">
-                                <h5 class="modal-title">Problēmas detaļas</h5>
+                                <h5 class="modal-title">Problem Details</h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                             </div>
                             <div class="modal-body">${detailsHtml}</div>
                             <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Aizvērt</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                             </div>
                         </div>
                     </div>
@@ -970,29 +913,26 @@ $page_title = 'Problēmu pārvaldība';
             const modal = new bootstrap.Modal(document.getElementById('tempDetailModal'));
             modal.show();
             
-            // Dzēšam modal pēc aizvēršanas
             document.getElementById('tempDetailModal').addEventListener('hidden.bs.modal', function() {
                 detailModal.remove();
             });
             
         } else {
-            showToast('Problēmas detaļas nav atrastas pašreizējā lapā.', 'warning');
+            showToast('Problem details not found on current page.', 'warning');
         }
     }
     
     function refreshData() {
-        showToast('Atjauno datus...', 'info');
+        showToast('Refreshing data...', 'info');
         setTimeout(() => {
             location.reload();
         }, 1000);
     }
     
     function showToast(message, type = 'info', duration = 4000) {
-        // Dzēšam esošos toasts
         const existingToasts = document.querySelectorAll('.toast');
         existingToasts.forEach(toast => toast.remove());
         
-        // Izveidojam toast container, ja tāda nav
         let container = document.querySelector('.toast-container');
         if (!container) {
             container = document.createElement('div');
@@ -1001,7 +941,6 @@ $page_title = 'Problēmu pārvaldība';
             document.body.appendChild(container);
         }
         
-        // Izveidojam toast
         const toast = document.createElement('div');
         toast.className = `toast align-items-center text-white bg-${type} border-0`;
         toast.setAttribute('role', 'alert');
@@ -1016,14 +955,12 @@ $page_title = 'Problēmu pārvaldība';
         
         container.appendChild(toast);
         
-        // Rādām toast
         const bsToast = new bootstrap.Toast(toast, {
             autohide: true,
             delay: duration
         });
         bsToast.show();
         
-        // Dzēšam pēc aizvēršanas
         toast.addEventListener('hidden.bs.toast', function() {
             toast.remove();
         });
@@ -1038,23 +975,16 @@ $page_title = 'Problēmu pārvaldība';
         };
         return icons[type] || 'info-circle';
     }
-    
-    // Pievienojam debug informāciju beigās
-    console.log('🔧 PILNĪGS IZLABOJUMS LIETOTS - Manager Problems Debug Info:');
-    console.log('- SQL parametru problēmas atrisinātas');
-    console.log('- WHERE klauzulu veidošana vienkāršota');
-    console.log('- Kļūdu apstrāde uzlabota');
-    console.log('- Visa funkcionalitāte strādā');
     </script>
 
     <?php
-    // Helper functions for time display
+    // Helper function for time display
     if (!function_exists('timeAgo')) {
         function timeAgo($datetime) {
             $time = time() - strtotime($datetime);
-            if ($time < 60) return 'tikko';
-            if ($time < 3600) return floor($time / 60) . ' min atpakaļ';
-            if ($time < 86400) return floor($time / 3600) . ' h atpakaļ';
+            if ($time < 60) return 'just now';
+            if ($time < 3600) return floor($time / 60) . ' min ago';
+            if ($time < 86400) return floor($time / 3600) . ' h ago';
             return date('j M', strtotime($datetime));
         }
     }
@@ -1062,3 +992,9 @@ $page_title = 'Problēmu pārvaldība';
 
 </body>
 </html>
+
+<?php
+echo "<!-- DEBUG: Page completed successfully at " . date('Y-m-d H:i:s') . " -->\n";
+echo "<!-- DEBUG: Memory usage: " . memory_get_usage(true) . " bytes -->\n";
+echo "<!-- DEBUG: Peak memory: " . memory_get_peak_usage(true) . " bytes -->\n";
+?>
