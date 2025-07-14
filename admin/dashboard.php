@@ -311,33 +311,34 @@ if (!function_exists('timeAgo')) {
                 <span class="me-3">Welcome, <?php echo htmlspecialchars($admin['first_name']); ?>!</span>
                 
                 <!-- Problems Alert Badge -->
-                <?php if ($stats['urgent_problems'] > 0): ?>
-                <a href="../manager/problems.php" class="btn btn-outline-light btn-sm me-2 position-relative">
-                    <i class="fas fa-exclamation-triangle"></i> Urgent
-                    <span class="notification-badge"><?php echo $stats['urgent_problems']; ?></span>
-                </a>
-                <?php endif; ?>
+               <?php if ($stats['urgent_problems'] > 0): ?>
+<a href="../manager/problems.php?priority=urgent" class="btn btn-outline-light btn-sm me-2 position-relative">
+    <i class="fas fa-exclamation-triangle"></i> Urgent
+    <span class="notification-badge"><?php echo $stats['urgent_problems']; ?></span>
+</a>
+<?php endif; ?>
                 
-                <div class="dropdown">
-                    <button class="btn btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                        <i class="fas fa-cog"></i>
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="#" onclick="showCreateTaskModal()">
-                            <i class="fas fa-plus"></i> Create Task</a></li>
-                        <li><a class="dropdown-item" href="users.php">
-                            <i class="fas fa-users"></i> Manage Users</a></li>
-                        <li><a class="dropdown-item" href="../manager/tasks.php">
-                            <i class="fas fa-tasks"></i> Manage Tasks</a></li>
-                        <li><a class="dropdown-item" href="../manager/problems.php">
-                            <i class="fas fa-exclamation-triangle"></i> Manage Problems</a></li>
-                        <li><a class="dropdown-item" href="reports.php">
-                            <i class="fas fa-chart-bar"></i> Reports</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="../logout.php">
-                            <i class="fas fa-sign-out-alt"></i> Logout</a></li>
-                    </ul>
-                </div>
+               <div class="dropdown">
+    <button class="btn btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+        <i class="fas fa-cog"></i>
+    </button>
+    <ul class="dropdown-menu">
+        <li><a class="dropdown-item" href="#" onclick="showCreateTaskModal()">
+            <i class="fas fa-plus"></i> Create Task</a></li>
+        <li><a class="dropdown-item" href="users.php">
+            <i class="fas fa-users"></i> Manage Users</a></li>
+        <li><a class="dropdown-item" href="../manager/tasks.php">
+            <i class="fas fa-tasks"></i> Manage Tasks</a></li>
+        <!-- FIXED: Corrected Problems link -->
+        <li><a class="dropdown-item" href="../manager/problems.php">
+            <i class="fas fa-exclamation-triangle"></i> Manage Problems</a></li>
+        <li><a class="dropdown-item" href="reports.php">
+            <i class="fas fa-chart-bar"></i> Reports</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" href="../logout.php">
+            <i class="fas fa-sign-out-alt"></i> Logout</a></li>
+    </ul>
+</div>
             </div>
         </div>
     </nav>
@@ -473,59 +474,60 @@ if (!function_exists('timeAgo')) {
         </div>
         
         <!-- Quick Actions -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-bolt"></i> Quick Actions</h5>
+       <div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-bolt"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-lg-2 col-md-6">
+                        <a href="#" onclick="showCreateTaskModal()" 
+                           class="btn btn-success w-100 quick-action-btn">
+                            <i class="fas fa-plus-circle"></i>
+                            <span>Create Task</span>
+                        </a>
                     </div>
-                    <div class="card-body">
-                        <div class="row g-3">
-                            <div class="col-lg-2 col-md-6">
-                                <a href="#" onclick="showCreateTaskModal()" 
-                                   class="btn btn-success w-100 quick-action-btn">
-                                    <i class="fas fa-plus-circle"></i>
-                                    <span>Create Task</span>
-                                </a>
-                            </div>
-                            <div class="col-lg-2 col-md-6">
-                                <a href="users.php" class="btn btn-primary w-100 quick-action-btn">
-                                    <i class="fas fa-user-plus"></i>
-                                    <span>Manage Users</span>
-                                </a>
-                            </div>
-                            <div class="col-lg-2 col-md-6">
-                                <a href="../manager/tasks.php" class="btn btn-info w-100 quick-action-btn">
-                                    <i class="fas fa-tasks"></i>
-                                    <span>View Tasks</span>
-                                </a>
-                            </div>
-                            <div class="col-lg-2 col-md-6">
-                                <a href="../manager/problems.php" class="btn btn-warning w-100 quick-action-btn">
-                                    <i class="fas fa-exclamation-triangle"></i>
-                                    <span>Problems</span>
-                                    <?php if ($stats['reported_problems'] > 0): ?>
-                                    <small class="d-block mt-1"><?php echo $stats['reported_problems']; ?> new</small>
-                                    <?php endif; ?>
-                                </a>
-                            </div>
-                            <div class="col-lg-2 col-md-6">
-                                <a href="../mechanic/dashboard.php" class="btn btn-info w-100 quick-action-btn">
-                                    <i class="fas fa-eye"></i>
-                                    <span>View as Mechanic</span>
-                                </a>
-                            </div>
-                            <div class="col-lg-2 col-md-6">
-                                <button class="btn btn-secondary w-100 quick-action-btn" onclick="showSystemInfo()">
-                                    <i class="fas fa-info-circle"></i>
-                                    <span>System Info</span>
-                                </button>
-                            </div>
-                        </div>
+                    <div class="col-lg-2 col-md-6">
+                        <a href="users.php" class="btn btn-primary w-100 quick-action-btn">
+                            <i class="fas fa-user-plus"></i>
+                            <span>Manage Users</span>
+                        </a>
+                    </div>
+                    <div class="col-lg-2 col-md-6">
+                        <a href="../manager/tasks.php" class="btn btn-info w-100 quick-action-btn">
+                            <i class="fas fa-tasks"></i>
+                            <span>View Tasks</span>
+                        </a>
+                    </div>
+                    <!-- FIXED: Corrected Problems link -->
+                    <div class="col-lg-2 col-md-6">
+                        <a href="../manager/problems.php" class="btn btn-warning w-100 quick-action-btn">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <span>Problems</span>
+                            <?php if ($stats['reported_problems'] > 0): ?>
+                            <small class="d-block mt-1"><?php echo $stats['reported_problems']; ?> new</small>
+                            <?php endif; ?>
+                        </a>
+                    </div>
+                    <div class="col-lg-2 col-md-6">
+                        <a href="../mechanic/dashboard.php" class="btn btn-info w-100 quick-action-btn">
+                            <i class="fas fa-eye"></i>
+                            <span>View as Mechanic</span>
+                        </a>
+                    </div>
+                    <div class="col-lg-2 col-md-6">
+                        <button class="btn btn-secondary w-100 quick-action-btn" onclick="showSystemInfo()">
+                            <i class="fas fa-info-circle"></i>
+                            <span>System Info</span>
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
+</div>
         
         <div class="row">
             <!-- Recent Tasks -->
@@ -799,45 +801,52 @@ if (!function_exists('timeAgo')) {
     }
     
     function filterDashboard(filterType) {
-        let url = 'dashboard.php?';
-        
-        switch(filterType) {
-            case 'users':
-                url += 'role=all';
-                break;
-            case 'tasks':
-                url += 'status=all';
-                break;
-            case 'pending':
-                url += 'status=pending';
-                break;
-            case 'in_progress':
-                url += 'status=in_progress';
-                break;
-            case 'completed':
-                url += 'status=completed';
-                break;
-            case 'overdue':
-                url += 'status=overdue';
-                break;
-            case 'admin':
-                url += 'role=admin';
-                break;
-            case 'manager':
-                url += 'role=manager';
-                break;
-            case 'mechanic':
-                url += 'role=mechanic';
-                break;
-            case 'operator':
-                url += 'role=operator';
-                break;
-            default:
-                return;
-        }
-        
-        window.location.href = url;
+    let url = 'dashboard.php?';
+    
+    switch(filterType) {
+        case 'users':
+            url += 'role=all';
+            break;
+        case 'tasks':
+            url += 'status=all';
+            break;
+        case 'pending':
+            url += 'status=pending';
+            break;
+        case 'in_progress':
+            url += 'status=in_progress';
+            break;
+        case 'completed':
+            url += 'status=completed';
+            break;
+        case 'overdue':
+            url += 'status=overdue';
+            break;
+        case 'admin':
+            url += 'role=admin';
+            break;
+        case 'manager':
+            url += 'role=manager';
+            break;
+        case 'mechanic':
+            url += 'role=mechanic';
+            break;
+        case 'operator':
+            url += 'role=operator';
+            break;
+        // FIXED: Add problems redirect
+        case 'problems':
+            window.location.href = '../manager/problems.php';
+            return;
+        case 'urgent_problems':
+            window.location.href = '../manager/problems.php?priority=urgent';
+            return;
+        default:
+            return;
     }
+    
+    window.location.href = url;
+}
     
     function showCreateTaskModal() {
         console.log('Opening admin task creation modal...');
@@ -998,6 +1007,14 @@ if (!function_exists('timeAgo')) {
     function editTask(taskId) {
         window.location.href = `../manager/tasks.php?edit=${taskId}`;
     }
+                               
+    function viewProblems() {
+    window.location.href = '../manager/problems.php';
+}
+
+function viewUrgentProblems() {
+    window.location.href = '../manager/problems.php?priority=urgent';
+}
     
     function showSystemInfo() {
         const info = `System Information:
