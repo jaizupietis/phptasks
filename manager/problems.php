@@ -1,5 +1,55 @@
 <?php
 /**
+ * FIXED Manager Problem Assignment Handler
+ * Add this at the beginning of /var/www/tasks/manager/problems.php
+ * BEFORE the existing handle assignment code
+ */
+
+// Handle direct assignment from URL parameter
+if (isset($_GET['assign']) && !empty($_GET['assign'])) {
+    $assign_problem_id = (int)$_GET['assign'];
+    
+    // Fetch problem details for assignment
+    try {
+        $assign_problem = $db->fetch(
+            "SELECT p.*, ur.first_name as reported_by_name, ur.last_name as reported_by_lastname
+             FROM problems p 
+             LEFT JOIN users ur ON p.reported_by = ur.id 
+             WHERE p.id = ?",
+            [$assign_problem_id]
+        );
+        
+        if (!$assign_problem) {
+            $_SESSION['error_message'] = 'Problem not found.';
+            header('Location: problems.php');
+            exit;
+        }
+        
+        if ($assign_problem['status'] !== 'reported') {
+            $_SESSION['error_message'] = 'This problem has already been assigned.';
+            header('Location: problems.php');
+            exit;
+        }
+        
+        // Set flag to auto-open assignment modal
+        $auto_assign_problem = $assign_problem;
+        
+    } catch (Exception $e) {
+        error_log("Problem assignment fetch error: " . $e->getMessage());
+        $_SESSION['error_message'] = 'Error loading problem details.';
+        header('Location: problems.php');
+        exit;
+    }
+}
+
+// Rest of your existing problems.php code continues here...
+// ... [existing code] ...
+
+// Add this JavaScript at the end of the problems.php file, before closing </body>
+?>
+
+<?php
+/**
  * Manager Problem Management Dashboard
  * Enhanced version with better workflow management
  * Create as: /var/www/tasks/manager/problems.php
@@ -938,5 +988,83 @@ $page_title = 'Problem Management';
         return icons[type] || 'info-circle';
     }
     </script>
+    <script>
+// Auto-open assignment modal if problem ID is specified in URL
+document.addEventListener('DOMContentLoaded', function() {
+    <?php if (isset($auto_assign_problem)): ?>
+    // Auto-open assignment modal for problem from URL
+    setTimeout(() => {
+        assignProblem(<?php echo $auto_assign_problem['id']; ?>);
+    }, 500);
+    <?php endif; ?>
+    
+    // Check URL for assign parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const assignProblemId = urlParams.get('assign');
+    
+    if (assignProblemId && !<?php echo isset($auto_assign_problem) ? 'true' : 'false'; ?>) {
+        // Clean URL and show assignment modal
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setTimeout(() => {
+            assignProblem(parseInt(assignProblemId));
+        }, 500);
+    }
+});
+
+// Enhanced assignProblem function
+function assignProblem(problemId) {
+    console.log('Assigning problem:', problemId);
+    
+    // Find problem details from page
+    const problemCard = document.querySelector(`[data-problem-id="${problemId}"]`);
+    let problemTitle = `Problem #${problemId}`;
+    
+    if (problemCard) {
+        const titleElement = problemCard.querySelector('.card-title, h6');
+        if (titleElement) {
+            problemTitle = titleElement.textContent.trim();
+        }
+    }
+    
+    document.getElementById('assignProblemId').value = problemId;
+    document.getElementById('assignProblemDetails').innerHTML = `
+        <div class="alert alert-light">
+            <h6><i class="fas fa-exclamation-triangle"></i> ${problemTitle}</h6>
+            <p class="mb-0">Select a mechanic to assign this problem to.</p>
+        </div>
+    `;
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('assignProblemModal'));
+    modal.show();
+}
+
+// Fix for convert to task function
+function convertToTask(problemId) {
+    console.log('Converting problem to task:', problemId);
+    
+    const problemCard = document.querySelector(`[data-problem-id="${problemId}"]`);
+    let problemTitle = `Problem #${problemId}`;
+    
+    if (problemCard) {
+        const titleElement = problemCard.querySelector('.card-title, h6');
+        if (titleElement) {
+            problemTitle = titleElement.textContent.trim();
+        }
+    }
+    
+    document.getElementById('convertProblemId').value = problemId;
+    document.getElementById('convertProblemDetails').innerHTML = `
+        <div class="alert alert-light">
+            <h6><i class="fas fa-wrench"></i> ${problemTitle}</h6>
+            <p class="mb-0">This will create a maintenance task: "Fix: ${problemTitle}"</p>
+        </div>
+    `;
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('convertTaskModal'));
+    modal.show();
+}
+</script>
 </body>
 </html>
