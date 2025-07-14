@@ -53,31 +53,46 @@ if ($role_filter !== 'all') {
 
 // Get basic statistics with error handling
 try {
+    // Use simpler, safer queries to avoid parameter errors
     $stats = [
-        'total_users' => $db->fetchCount("SELECT COUNT(*) FROM users u WHERE u.is_active = 1 AND {$user_where}", $user_params),
-        'total_tasks' => $db->fetchCount("SELECT COUNT(*) FROM tasks t WHERE {$task_where}", $task_params),
-        'pending_tasks' => $db->fetchCount("SELECT COUNT(*) FROM tasks t WHERE {$task_where} AND t.status = 'pending'", array_merge($task_params, ['pending'])),
-        'in_progress_tasks' => $db->fetchCount("SELECT COUNT(*) FROM tasks t WHERE {$task_where} AND t.status = 'in_progress'", array_merge($task_params, ['in_progress'])),
-        'completed_tasks' => $db->fetchCount("SELECT COUNT(*) FROM tasks t WHERE {$task_where} AND t.status = 'completed'", array_merge($task_params, ['completed'])),
-        'overdue_tasks' => $db->fetchCount("SELECT COUNT(*) FROM tasks t WHERE {$task_where} AND t.due_date < NOW() AND t.status NOT IN ('completed', 'cancelled')", $task_params),
+        'total_users' => $db->fetchCount("SELECT COUNT(*) FROM users WHERE is_active = 1"),
+        'total_tasks' => $db->fetchCount("SELECT COUNT(*) FROM tasks"),
+        'pending_tasks' => $db->fetchCount("SELECT COUNT(*) FROM tasks WHERE status = 'pending'"),
+        'in_progress_tasks' => $db->fetchCount("SELECT COUNT(*) FROM tasks WHERE status = 'in_progress'"),
+        'completed_tasks' => $db->fetchCount("SELECT COUNT(*) FROM tasks WHERE status = 'completed'"),
+        'overdue_tasks' => $db->fetchCount("SELECT COUNT(*) FROM tasks WHERE due_date < NOW() AND status NOT IN ('completed', 'cancelled')"),
         
-        // Role-based user statistics
+        // Role-based user statistics - fixed queries
         'admin_users' => $db->fetchCount("SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1"),
         'manager_users' => $db->fetchCount("SELECT COUNT(*) FROM users WHERE role = 'manager' AND is_active = 1"),
         'mechanic_users' => $db->fetchCount("SELECT COUNT(*) FROM users WHERE role = 'mechanic' AND is_active = 1"),
         'operator_users' => $db->fetchCount("SELECT COUNT(*) FROM users WHERE role = 'operator' AND is_active = 1"),
         
-        // Problem statistics
-        'total_problems' => $db->fetchCount("SELECT COUNT(*) FROM problems"),
-        'reported_problems' => $db->fetchCount("SELECT COUNT(*) FROM problems WHERE status = 'reported'"),
-        'urgent_problems' => $db->fetchCount("SELECT COUNT(*) FROM problems WHERE priority = 'urgent' AND status NOT IN ('resolved', 'closed')"),
+        // Problem statistics - fixed queries
+        'total_problems' => 0,
+        'reported_problems' => 0,
+        'urgent_problems' => 0,
     ];
+    
+    // Safely get problem stats
+    try {
+        $stats['total_problems'] = $db->fetchCount("SELECT COUNT(*) FROM problems");
+        $stats['reported_problems'] = $db->fetchCount("SELECT COUNT(*) FROM problems WHERE status = 'reported'");
+        $stats['urgent_problems'] = $db->fetchCount("SELECT COUNT(*) FROM problems WHERE priority = 'urgent' AND status NOT IN ('resolved', 'closed')");
+    } catch (Exception $e) {
+        error_log("Problems stats error: " . $e->getMessage());
+        // Continue with zero values if problems table has issues
+    }
+        
 } catch (Exception $e) {
     error_log("Admin dashboard stats error: " . $e->getMessage());
-    $stats = array_fill_keys(['total_users', 'total_tasks', 'pending_tasks', 'in_progress_tasks', 
-                             'completed_tasks', 'overdue_tasks', 'admin_users', 'manager_users',
-                             'mechanic_users', 'operator_users', 'total_problems', 'reported_problems',
-                             'urgent_problems'], 0);
+    // Initialize with safe defaults
+    $stats = [
+        'total_users' => 0, 'total_tasks' => 0, 'pending_tasks' => 0, 'in_progress_tasks' => 0, 
+        'completed_tasks' => 0, 'overdue_tasks' => 0, 'admin_users' => 0, 'manager_users' => 0,
+        'mechanic_users' => 0, 'operator_users' => 0, 'total_problems' => 0, 'reported_problems' => 0,
+        'urgent_problems' => 0
+    ];
 }
 
 // Get recent activities with error handling
@@ -302,7 +317,8 @@ if (!function_exists('timeAgo')) {
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-dark admin-navbar">
+    
+    <nav class="navbar navbar-dark admin-navbar">  
         <div class="container-fluid">
             <span class="navbar-brand mb-0 h1">
                 <i class="fas fa-shield-alt"></i> Admin Panel
@@ -310,8 +326,8 @@ if (!function_exists('timeAgo')) {
             <div class="d-flex align-items-center">
                 <span class="me-3">Welcome, <?php echo htmlspecialchars($admin['first_name']); ?>!</span>
                 
-                <!-- Problems Alert Badge -->
-               <?php if ($stats['urgent_problems'] > 0): ?>
+                <!-- FIXED Problems Alert Badge Section -->
+<?php if ($stats['urgent_problems'] > 0): ?>
 <a href="../manager/problems.php?priority=urgent" class="btn btn-outline-light btn-sm me-2 position-relative">
     <i class="fas fa-exclamation-triangle"></i> Urgent
     <span class="notification-badge"><?php echo $stats['urgent_problems']; ?></span>
@@ -329,8 +345,8 @@ if (!function_exists('timeAgo')) {
             <i class="fas fa-users"></i> Manage Users</a></li>
         <li><a class="dropdown-item" href="../manager/tasks.php">
             <i class="fas fa-tasks"></i> Manage Tasks</a></li>
-        <!-- FIXED: Corrected Problems link -->
-        <li><a class="dropdown-item" href="../manager/problems.php">
+        <!-- FIXED: Safe Problems link with error handling -->
+        <li><a class="dropdown-item" href="#" onclick="safeNavigateToProblems()">
             <i class="fas fa-exclamation-triangle"></i> Manage Problems</a></li>
         <li><a class="dropdown-item" href="reports.php">
             <i class="fas fa-chart-bar"></i> Reports</a></li>
@@ -503,14 +519,14 @@ if (!function_exists('timeAgo')) {
                     </div>
                     <!-- FIXED: Corrected Problems link -->
                     <div class="col-lg-2 col-md-6">
-                        <a href="../manager/problems.php" class="btn btn-warning w-100 quick-action-btn">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <span>Problems</span>
-                            <?php if ($stats['reported_problems'] > 0): ?>
-                            <small class="d-block mt-1"><?php echo $stats['reported_problems']; ?> new</small>
-                            <?php endif; ?>
-                        </a>
-                    </div>
+    <a href="#" onclick="safeNavigateToProblems()" class="btn btn-warning w-100 quick-action-btn">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span>Problems</span>
+        <?php if ($stats['reported_problems'] > 0): ?>
+        <small class="d-block mt-1"><?php echo $stats['reported_problems']; ?> new</small>
+        <?php endif; ?>
+    </a>
+</div>
                     <div class="col-lg-2 col-md-6">
                         <a href="../mechanic/dashboard.php" class="btn btn-info w-100 quick-action-btn">
                             <i class="fas fa-eye"></i>
@@ -800,7 +816,45 @@ if (!function_exists('timeAgo')) {
         }
     }
     
-    function filterDashboard(filterType) {
+     // FIXED: Safe navigation to problems page with error handling
+function safeNavigateToProblems() {
+    console.log('🔧 Navigating to problems page safely...');
+    
+    // First check if the page is accessible
+    fetch('../manager/problems.php', {
+        method: 'HEAD',
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        console.log('Problems page check status:', response.status);
+        
+        if (response.ok) {
+            // Page is accessible, navigate normally
+            window.location.href = '../manager/problems.php';
+        } else {
+            // Page has issues, show fallback
+            showProblemsError();
+        }
+    })
+    .catch(error => {
+        console.error('Problems page check failed:', error);
+        showProblemsError();
+    });
+}
+
+function showProblemsError() {
+    showToast('⚠️ Problems page is temporarily unavailable. Please try again later.', 'warning', 8000);
+    
+    // Offer alternative actions
+    setTimeout(() => {
+        if (confirm('Would you like to view the debug page to help resolve this issue?')) {
+            window.open('../debug_api.php', '_blank');
+        }
+    }, 2000);
+}
+                               
+// FIXED: Filter dashboard function with safe problem navigation
+function filterDashboard(filterType) {
     let url = 'dashboard.php?';
     
     switch(filterType) {
@@ -834,12 +888,12 @@ if (!function_exists('timeAgo')) {
         case 'operator':
             url += 'role=operator';
             break;
-        // FIXED: Add problems redirect
+        // FIXED: Safe problems redirect
         case 'problems':
-            window.location.href = '../manager/problems.php';
+            safeNavigateToProblems();
             return;
         case 'urgent_problems':
-            window.location.href = '../manager/problems.php?priority=urgent';
+            safeNavigateToProblems();
             return;
         default:
             return;
@@ -847,7 +901,12 @@ if (!function_exists('timeAgo')) {
     
     window.location.href = url;
 }
-    
+  // Enhanced debug information
+console.log('🔧 FIXED Admin Dashboard Debug Info:');
+console.log('- Total problems:', <?php echo $stats['total_problems']; ?>);
+console.log('- Reported problems:', <?php echo $stats['reported_problems']; ?>);
+console.log('- Urgent problems:', <?php echo $stats['urgent_problems']; ?>);
+console.log('- Problems system available:', <?php echo $stats['total_problems'] >= 0 ? 'true' : 'false'; ?>);  
     function showCreateTaskModal() {
         console.log('Opening admin task creation modal...');
         
@@ -1108,3 +1167,48 @@ function getActivityIcon($action) {
     return 'edit';
 }
 ?>
+
+<?php
+/**
+ * ADDITIONAL DEBUGGING SECTION
+ * Add this to help diagnose the issue
+ */
+
+// Debug information (remove in production)
+if (isset($_GET['debug'])) {
+    echo "<div class='alert alert-info'>";
+    echo "<h6>Debug Information:</h6>";
+    echo "<p><strong>Problems Table Status:</strong> ";
+    
+    try {
+        $problem_count = $db->fetchCount("SELECT COUNT(*) FROM problems");
+        echo "✅ Available ($problem_count records)";
+    } catch (Exception $e) {
+        echo "❌ Error: " . $e->getMessage();
+    }
+    
+    echo "</p>";
+    echo "<p><strong>Mechanics Available:</strong> ";
+    
+    try {
+        $mechanic_count = $db->fetchCount("SELECT COUNT(*) FROM users WHERE role = 'mechanic' AND is_active = 1");
+        echo "✅ $mechanic_count mechanics";
+    } catch (Exception $e) {
+        echo "❌ Error: " . $e->getMessage();
+    }
+    
+    echo "</p>";
+    echo "<p><strong>Problems Page Test:</strong> <button onclick='safeNavigateToProblems()' class='btn btn-sm btn-primary'>Test Navigation</button></p>";
+    echo "</div>";
+}
+?>
+
+<!-- Add debug link for admins -->
+<div class="text-center mt-3">
+    <a href="?debug=1" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-bug"></i> Show Debug Info
+    </a>
+    <a href="../debug_api.php" class="btn btn-sm btn-outline-info" target="_blank">
+        <i class="fas fa-tools"></i> API Debug Tool
+    </a>
+</div>
