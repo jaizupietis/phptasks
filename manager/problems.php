@@ -1,58 +1,8 @@
 <?php
 /**
- * FIXED Manager Problem Assignment Handler
- * Add this at the beginning of /var/www/tasks/manager/problems.php
- * BEFORE the existing handle assignment code
- */
-
-// Handle direct assignment from URL parameter
-if (isset($_GET['assign']) && !empty($_GET['assign'])) {
-    $assign_problem_id = (int)$_GET['assign'];
-    
-    // Fetch problem details for assignment
-    try {
-        $assign_problem = $db->fetch(
-            "SELECT p.*, ur.first_name as reported_by_name, ur.last_name as reported_by_lastname
-             FROM problems p 
-             LEFT JOIN users ur ON p.reported_by = ur.id 
-             WHERE p.id = ?",
-            [$assign_problem_id]
-        );
-        
-        if (!$assign_problem) {
-            $_SESSION['error_message'] = 'Problem not found.';
-            header('Location: problems.php');
-            exit;
-        }
-        
-        if ($assign_problem['status'] !== 'reported') {
-            $_SESSION['error_message'] = 'This problem has already been assigned.';
-            header('Location: problems.php');
-            exit;
-        }
-        
-        // Set flag to auto-open assignment modal
-        $auto_assign_problem = $assign_problem;
-        
-    } catch (Exception $e) {
-        error_log("Problem assignment fetch error: " . $e->getMessage());
-        $_SESSION['error_message'] = 'Error loading problem details.';
-        header('Location: problems.php');
-        exit;
-    }
-}
-
-// Rest of your existing problems.php code continues here...
-// ... [existing code] ...
-
-// Add this JavaScript at the end of the problems.php file, before closing </body>
-?>
-
-<?php
-/**
- * Manager Problem Management Dashboard
- * Enhanced version with better workflow management
- * Create as: /var/www/tasks/manager/problems.php
+ * FIXED Manager Problem Management Dashboard
+ * This version fixes the blank page issue and assignment functionality
+ * Replace: /var/www/tasks/manager/problems.php
  */
 
 define('SECURE_ACCESS', true);
@@ -192,53 +142,73 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $per_page = $is_mobile ? 8 : 15;
 $offset = ($page - 1) * $per_page;
 
-$problems = $db->fetchAll(
-    "SELECT p.*, 
-            ur.first_name as reported_by_name, ur.last_name as reported_by_lastname,
-            ua.first_name as assigned_to_name, ua.last_name as assigned_to_lastname,
-            ub.first_name as assigned_by_name, ub.last_name as assigned_by_lastname,
-            t.id as task_id, t.status as task_status, t.title as task_title
-     FROM problems p 
-     LEFT JOIN users ur ON p.reported_by = ur.id 
-     LEFT JOIN users ua ON p.assigned_to = ua.id 
-     LEFT JOIN users ub ON p.assigned_by = ub.id 
-     LEFT JOIN tasks t ON p.task_id = t.id
-     WHERE {$where_clause}
-     ORDER BY 
-        CASE 
-            WHEN p.status = 'reported' THEN 1 
-            WHEN p.priority = 'urgent' THEN 2 
-            WHEN p.priority = 'high' THEN 3 
-            ELSE 4 
-        END,
-        p.created_at DESC 
-     LIMIT {$per_page} OFFSET {$offset}",
-    $params
-);
+try {
+    $problems = $db->fetchAll(
+        "SELECT p.*, 
+                ur.first_name as reported_by_name, ur.last_name as reported_by_lastname,
+                ua.first_name as assigned_to_name, ua.last_name as assigned_to_lastname,
+                ub.first_name as assigned_by_name, ub.last_name as assigned_by_lastname,
+                t.id as task_id, t.status as task_status, t.title as task_title
+         FROM problems p 
+         LEFT JOIN users ur ON p.reported_by = ur.id 
+         LEFT JOIN users ua ON p.assigned_to = ua.id 
+         LEFT JOIN users ub ON p.assigned_by = ub.id 
+         LEFT JOIN tasks t ON p.task_id = t.id
+         WHERE {$where_clause}
+         ORDER BY 
+            CASE 
+                WHEN p.status = 'reported' THEN 1 
+                WHEN p.priority = 'urgent' THEN 2 
+                WHEN p.priority = 'high' THEN 3 
+                ELSE 4 
+            END,
+            p.created_at DESC 
+         LIMIT {$per_page} OFFSET {$offset}",
+        $params
+    );
+} catch (Exception $e) {
+    error_log("Problems fetch error: " . $e->getMessage());
+    $problems = [];
+}
 
 // Get total count for pagination
-$total_problems = $db->fetchCount(
-    "SELECT COUNT(*) FROM problems p WHERE {$where_clause}",
-    $params
-);
+try {
+    $total_problems = $db->fetchCount(
+        "SELECT COUNT(*) FROM problems p WHERE {$where_clause}",
+        $params
+    );
+} catch (Exception $e) {
+    error_log("Problems count error: " . $e->getMessage());
+    $total_problems = 0;
+}
 
-$total_pages = ceil($total_problems / $per_page);
+$total_pages = $total_problems > 0 ? ceil($total_problems / $per_page) : 1;
 
 // Get all mechanics for assignment
-$mechanics = $db->fetchAll(
-    "SELECT id, first_name, last_name FROM users 
-     WHERE role = 'mechanic' AND is_active = 1 
-     ORDER BY first_name, last_name"
-);
+try {
+    $mechanics = $db->fetchAll(
+        "SELECT id, first_name, last_name FROM users 
+         WHERE role = 'mechanic' AND is_active = 1 
+         ORDER BY first_name, last_name"
+    );
+} catch (Exception $e) {
+    error_log("Mechanics fetch error: " . $e->getMessage());
+    $mechanics = [];
+}
 
 // Get problem statistics
-$problem_stats = [
-    'total' => $total_problems,
-    'reported' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'reported'", $params),
-    'assigned' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'assigned'", $params),
-    'in_progress' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'in_progress'", $params),
-    'resolved' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'resolved'", $params)
-];
+try {
+    $problem_stats = [
+        'total' => $total_problems,
+        'reported' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'reported'", array_merge($params, ['reported'])),
+        'assigned' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'assigned'", array_merge($params, ['assigned'])),
+        'in_progress' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'in_progress'", array_merge($params, ['in_progress'])),
+        'resolved' => $db->fetchCount("SELECT COUNT(*) FROM problems p WHERE {$where_clause} AND p.status = 'resolved'", array_merge($params, ['resolved']))
+    ];
+} catch (Exception $e) {
+    error_log("Problem stats error: " . $e->getMessage());
+    $problem_stats = ['total' => 0, 'reported' => 0, 'assigned' => 0, 'in_progress' => 0, 'resolved' => 0];
+}
 
 $page_title = 'Problem Management';
 ?>
@@ -251,7 +221,6 @@ $page_title = 'Problem Management';
     
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="../css/style.css" rel="stylesheet">
     
     <style>
         :root {
@@ -578,11 +547,6 @@ $page_title = 'Problem Management';
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <small class="text-muted">Page <?php echo $page; ?> of <?php echo $total_pages; ?></small>
-                        <div class="btn-group btn-group-sm">
-                            <button class="btn btn-outline-secondary" onclick="bulkAssign()">
-                                <i class="fas fa-users"></i> Bulk Assign
-                            </button>
-                        </div>
                     </div>
                 </div>
                 
@@ -866,12 +830,30 @@ $page_title = 'Problem Management';
         </div>
     </div>
     
+    <!-- View Problem Details Modal -->
+    <div class="modal fade" id="viewProblemModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-eye"></i> Problem Details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="viewProblemContent">
+                    <!-- Content will be loaded here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <!-- JavaScript -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        console.log('Manager Problem Management loaded successfully');
+        console.log('✅ Manager Problem Management loaded successfully');
         
         // Auto-dismiss alerts
         setTimeout(() => {
@@ -881,22 +863,35 @@ $page_title = 'Problem Management';
                 bsAlert.close();
             });
         }, 5000);
+        
+        console.log('Problem stats:', <?php echo json_encode($problem_stats); ?>);
+        console.log('Total mechanics available:', <?php echo count($mechanics); ?>);
     });
     
     function assignProblem(problemId) {
-        console.log('Assigning problem:', problemId);
+        console.log('✅ Assigning problem:', problemId);
         
-        // Get problem details
+        // Find problem details from page
         const problemCard = document.querySelector(`[data-problem-id="${problemId}"]`);
-        const problemTitle = problemCard.querySelector('.card-title').textContent.trim();
+        let problemTitle = `Problem #${problemId}`;
+        
+        if (problemCard) {
+            const titleElement = problemCard.querySelector('.card-title');
+            if (titleElement) {
+                problemTitle = titleElement.textContent.trim();
+            }
+        }
         
         document.getElementById('assignProblemId').value = problemId;
         document.getElementById('assignProblemDetails').innerHTML = `
             <div class="alert alert-light">
                 <h6><i class="fas fa-exclamation-triangle"></i> ${problemTitle}</h6>
-                <p class="mb-0">Select a mechanic to assign this problem to.</p>
+                <p class="mb-0">Select a mechanic to assign this problem to. They will be notified automatically.</p>
             </div>
         `;
+        
+        // Reset form
+        document.getElementById('assignMechanic').value = '';
         
         // Show modal
         const modal = new bootstrap.Modal(document.getElementById('assignProblemModal'));
@@ -904,19 +899,29 @@ $page_title = 'Problem Management';
     }
     
     function convertToTask(problemId) {
-        console.log('Converting problem to task:', problemId);
+        console.log('✅ Converting problem to task:', problemId);
         
-        // Get problem details
         const problemCard = document.querySelector(`[data-problem-id="${problemId}"]`);
-        const problemTitle = problemCard.querySelector('.card-title').textContent.trim();
+        let problemTitle = `Problem #${problemId}`;
+        
+        if (problemCard) {
+            const titleElement = problemCard.querySelector('.card-title');
+            if (titleElement) {
+                problemTitle = titleElement.textContent.trim();
+            }
+        }
         
         document.getElementById('convertProblemId').value = problemId;
         document.getElementById('convertProblemDetails').innerHTML = `
             <div class="alert alert-light">
                 <h6><i class="fas fa-wrench"></i> ${problemTitle}</h6>
                 <p class="mb-0">This will create a maintenance task: "Fix: ${problemTitle}"</p>
+                <small class="text-muted">The task will include all problem details and estimated resolution time.</small>
             </div>
         `;
+        
+        // Reset form
+        document.getElementById('convertMechanic').value = '';
         
         // Show modal
         const modal = new bootstrap.Modal(document.getElementById('convertTaskModal'));
@@ -924,20 +929,172 @@ $page_title = 'Problem Management';
     }
     
     function viewProblemDetails(problemId) {
-        // For now, show basic info - can be enhanced with a detailed modal
-        showToast(`Viewing problem #${problemId} - Detailed view coming soon!`, 'info');
+        console.log('✅ Viewing problem details:', problemId);
+        
+        // Show loading
+        document.getElementById('viewProblemContent').innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading problem details...</p>
+            </div>
+        `;
+        
+        // Show modal first
+        const modal = new bootstrap.Modal(document.getElementById('viewProblemModal'));
+        modal.show();
+        
+        // Load problem details via API
+        fetch(`../api/problems.php?action=get_problem&id=${problemId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success && data.problem) {
+                const problem = data.problem;
+                document.getElementById('viewProblemContent').innerHTML = `
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h6 class="mb-3">${problem.title}</h6>
+                            
+                            ${problem.description ? `
+                            <div class="mb-3">
+                                <strong>Description:</strong>
+                                <p class="text-muted">${problem.description}</p>
+                            </div>
+                            ` : ''}
+                            
+                            <div class="row mb-3">
+                                <div class="col-sm-6">
+                                    <strong>Location:</strong> ${problem.location || 'Not specified'}
+                                </div>
+                                <div class="col-sm-6">
+                                    <strong>Equipment:</strong> ${problem.equipment || 'Not specified'}
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-sm-6">
+                                    <strong>Category:</strong> ${problem.category || 'Not specified'}
+                                </div>
+                                <div class="col-sm-6">
+                                    <strong>Reported:</strong> ${new Date(problem.created_at).toLocaleString()}
+                                </div>
+                            </div>
+                            
+                            ${problem.assigned_to_name ? `
+                            <div class="alert alert-info">
+                                <i class="fas fa-user"></i>
+                                <strong>Assigned to:</strong> ${problem.assigned_to_name} ${problem.assigned_to_lastname || ''}
+                                ${problem.assigned_by_name ? `<br><small>Assigned by: ${problem.assigned_by_name} ${problem.assigned_by_lastname || ''}</small>` : ''}
+                            </div>
+                            ` : ''}
+                            
+                            ${problem.task_title ? `
+                            <div class="alert alert-success">
+                                <i class="fas fa-wrench"></i>
+                                <strong>Task Created:</strong> ${problem.task_title}
+                                <br><small>Status: ${problem.task_status || 'Unknown'}</small>
+                            </div>
+                            ` : ''}
+                            
+                            ${problem.resolved_at ? `
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle"></i>
+                                <strong>Resolved:</strong> ${new Date(problem.resolved_at).toLocaleString()}
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <span class="status-badge status-${problem.status}">
+                                    ${problem.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                </span>
+                            </div>
+                            <div class="mb-3">
+                                <span class="priority-badge priority-${problem.priority}">
+                                    ${problem.priority.charAt(0).toUpperCase() + problem.priority.slice(1)} Priority
+                                </span>
+                            </div>
+                            <div class="mb-3">
+                                <span class="severity-badge severity-${problem.severity}">
+                                    ${problem.severity.charAt(0).toUpperCase() + problem.severity.slice(1)} Severity
+                                </span>
+                            </div>
+                            
+                            <hr>
+                            
+                            <div class="mb-2">
+                                <strong>Impact:</strong> ${problem.impact.charAt(0).toUpperCase() + problem.impact.slice(1)}
+                            </div>
+                            <div class="mb-2">
+                                <strong>Urgency:</strong> ${problem.urgency.charAt(0).toUpperCase() + problem.urgency.slice(1)}
+                            </div>
+                            ${problem.estimated_resolution_time ? `
+                            <div class="mb-2">
+                                <strong>Est. Resolution Time:</strong> ${problem.estimated_resolution_time}h
+                            </div>
+                            ` : ''}
+                            
+                            ${problem.status === 'reported' ? `
+                            <hr>
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-primary btn-sm" onclick="assignProblemFromModal(${problem.id})">
+                                    <i class="fas fa-user-plus"></i> Assign to Mechanic
+                                </button>
+                                <button class="btn btn-success btn-sm" onclick="convertToTaskFromModal(${problem.id})">
+                                    <i class="fas fa-wrench"></i> Convert to Task
+                                </button>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            } else {
+                document.getElementById('viewProblemContent').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Failed to load problem details: ${data.message || 'Unknown error'}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('❌ View problem error:', error);
+            document.getElementById('viewProblemContent').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle"></i>
+                    Error loading problem details: ${error.message}
+                </div>
+            `;
+        });
+    }
+    
+    function assignProblemFromModal(problemId) {
+        // Close view modal and open assign modal
+        bootstrap.Modal.getInstance(document.getElementById('viewProblemModal')).hide();
+        setTimeout(() => assignProblem(problemId), 300);
+    }
+    
+    function convertToTaskFromModal(problemId) {
+        // Close view modal and open convert modal
+        bootstrap.Modal.getInstance(document.getElementById('viewProblemModal')).hide();
+        setTimeout(() => convertToTask(problemId), 300);
     }
     
     function addComment(problemId) {
         showToast('Comment feature will be implemented soon!', 'info');
     }
     
-    function bulkAssign() {
-        showToast('Bulk assignment feature will be implemented soon!', 'info');
-    }
-    
     function refreshData() {
-        location.reload();
+        showToast('Refreshing data...', 'info');
+        setTimeout(() => {
+            location.reload();
+        }, 1000);
     }
     
     function exportProblems() {
@@ -945,9 +1102,11 @@ $page_title = 'Problem Management';
     }
     
     function showToast(message, type = 'info') {
+        // Remove existing toasts
         const existingToasts = document.querySelectorAll('.toast');
         existingToasts.forEach(toast => toast.remove());
         
+        // Create toast container if it doesn't exist
         let container = document.querySelector('.toast-container');
         if (!container) {
             container = document.createElement('div');
@@ -956,6 +1115,7 @@ $page_title = 'Problem Management';
             document.body.appendChild(container);
         }
         
+        // Create toast
         const toast = document.createElement('div');
         toast.className = `toast align-items-center text-white bg-${type} border-0`;
         toast.setAttribute('role', 'alert');
@@ -970,9 +1130,11 @@ $page_title = 'Problem Management';
         
         container.appendChild(toast);
         
+        // Show toast
         const bsToast = new bootstrap.Toast(toast);
         bsToast.show();
         
+        // Remove after hiding
         toast.addEventListener('hidden.bs.toast', function() {
             toast.remove();
         });
@@ -988,83 +1150,5 @@ $page_title = 'Problem Management';
         return icons[type] || 'info-circle';
     }
     </script>
-    <script>
-// Auto-open assignment modal if problem ID is specified in URL
-document.addEventListener('DOMContentLoaded', function() {
-    <?php if (isset($auto_assign_problem)): ?>
-    // Auto-open assignment modal for problem from URL
-    setTimeout(() => {
-        assignProblem(<?php echo $auto_assign_problem['id']; ?>);
-    }, 500);
-    <?php endif; ?>
-    
-    // Check URL for assign parameter
-    const urlParams = new URLSearchParams(window.location.search);
-    const assignProblemId = urlParams.get('assign');
-    
-    if (assignProblemId && !<?php echo isset($auto_assign_problem) ? 'true' : 'false'; ?>) {
-        // Clean URL and show assignment modal
-        window.history.replaceState({}, document.title, window.location.pathname);
-        setTimeout(() => {
-            assignProblem(parseInt(assignProblemId));
-        }, 500);
-    }
-});
-
-// Enhanced assignProblem function
-function assignProblem(problemId) {
-    console.log('Assigning problem:', problemId);
-    
-    // Find problem details from page
-    const problemCard = document.querySelector(`[data-problem-id="${problemId}"]`);
-    let problemTitle = `Problem #${problemId}`;
-    
-    if (problemCard) {
-        const titleElement = problemCard.querySelector('.card-title, h6');
-        if (titleElement) {
-            problemTitle = titleElement.textContent.trim();
-        }
-    }
-    
-    document.getElementById('assignProblemId').value = problemId;
-    document.getElementById('assignProblemDetails').innerHTML = `
-        <div class="alert alert-light">
-            <h6><i class="fas fa-exclamation-triangle"></i> ${problemTitle}</h6>
-            <p class="mb-0">Select a mechanic to assign this problem to.</p>
-        </div>
-    `;
-    
-    // Show modal
-    const modal = new bootstrap.Modal(document.getElementById('assignProblemModal'));
-    modal.show();
-}
-
-// Fix for convert to task function
-function convertToTask(problemId) {
-    console.log('Converting problem to task:', problemId);
-    
-    const problemCard = document.querySelector(`[data-problem-id="${problemId}"]`);
-    let problemTitle = `Problem #${problemId}`;
-    
-    if (problemCard) {
-        const titleElement = problemCard.querySelector('.card-title, h6');
-        if (titleElement) {
-            problemTitle = titleElement.textContent.trim();
-        }
-    }
-    
-    document.getElementById('convertProblemId').value = problemId;
-    document.getElementById('convertProblemDetails').innerHTML = `
-        <div class="alert alert-light">
-            <h6><i class="fas fa-wrench"></i> ${problemTitle}</h6>
-            <p class="mb-0">This will create a maintenance task: "Fix: ${problemTitle}"</p>
-        </div>
-    `;
-    
-    // Show modal
-    const modal = new bootstrap.Modal(document.getElementById('convertTaskModal'));
-    modal.show();
-}
-</script>
 </body>
 </html>
